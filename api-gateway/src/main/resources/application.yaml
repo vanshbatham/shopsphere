@@ -1,0 +1,27 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  config:
+    import: "optional:configserver:http://localhost:8888/"
+
+  cloud:
+    gateway:
+      routes:
+        - id: dummy-testing-route
+          uri: https://jsonplaceholder.typicode.com
+          predicates:
+            - Path=/posts/**
+          filters:
+            - AddRequestHeader=X-Gateway-Test, ShopSphere-Gateway
+
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
