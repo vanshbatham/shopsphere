@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres-user:
+    image: postgres:15-alpine
+    container_name: shopsphere-postgres-user
+    environment:
+      POSTGRES_USER: vansh
+      POSTGRES_PASSWORD: vansh@postgres
+      POSTGRES_DB: user_service_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-user-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres-user-data:

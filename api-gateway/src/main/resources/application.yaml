@@ -10,12 +10,10 @@ spring:
   cloud:
     gateway:
       routes:
-        - id: dummy-testing-route
-          uri: https://jsonplaceholder.typicode.com
+        - id: user-service-route
+          uri: lb://user-service
           predicates:
-            - Path=/posts/**
-          filters:
-            - AddRequestHeader=X-Gateway-Test, ShopSphere-Gateway
+            - Path=/api/v1/users/**
 
 eureka:
   instance:
