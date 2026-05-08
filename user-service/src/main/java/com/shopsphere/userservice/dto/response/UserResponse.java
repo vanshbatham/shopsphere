@@ -3,9 +3,10 @@ package com.shopsphere.userservice.dto.response;
 import com.shopsphere.userservice.entity.Role;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 public record UserResponse(
-        Long id,
+        UUID id,
         String username,
         String email,
         String firstName,

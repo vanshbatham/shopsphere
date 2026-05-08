@@ -1,6 +1,8 @@
 package com.shopsphere.userservice.service;
 
+import com.shopsphere.userservice.dto.request.LoginRequest;
 import com.shopsphere.userservice.dto.request.UserRegistrationRequest;
+import com.shopsphere.userservice.dto.response.AuthResponse;
 import com.shopsphere.userservice.dto.response.UserResponse;
 import com.shopsphere.userservice.entity.Role;
 import com.shopsphere.userservice.entity.User;
@@ -11,10 +13,14 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class UserService {
+
+    private final JwtService jwtService;
 
     private final UserRepository userRepository;
 
@@ -41,6 +47,7 @@ public class UserService {
                 .role(Role.BUYER)
                 .isActive(true)
                 .emailVerified(false)  // default to unverified, can be updated after email verification
+                .createdAt(LocalDateTime.now())
                 .build();
 
         // save to DB
@@ -60,4 +67,23 @@ public class UserService {
                 savedUser.getCreatedAt()
         );
     }
+
+    public AuthResponse login(LoginRequest request) {
+        // find user by username
+        User user = userRepository.findByEmail(request.email())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid username or password"));
+
+        // verify password mathematically
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            throw new IllegalArgumentException("Invalid username or password");
+        }
+
+        // generate JWT
+        String token = jwtService.generateToken(user);
+
+        log.info("User {} logged in successfully", user.getEmail());
+
+        return new AuthResponse(token, "Bearer", 900000L);
+    }
+
 }

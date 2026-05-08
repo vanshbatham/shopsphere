@@ -10,10 +10,18 @@ spring:
   cloud:
     gateway:
       routes:
-        - id: user-service-route
+        - id: user-service-auth
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/register, /api/v1/users/login
+
+        # Secured User Routes (Requires Filter)
+        - id: user-service
           uri: lb://user-service
           predicates:
             - Path=/api/v1/users/**
+          filters:
+            - AuthenticationFilter
 
 eureka:
   instance:
@@ -23,3 +31,6 @@ eureka:
     fetch-registry: true
     service-url:
       defaultZone: http://localhost:8761/eureka/
+
+jwt:
+  secret: ${JWT_SECRET}
