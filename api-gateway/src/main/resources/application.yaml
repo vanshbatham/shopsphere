@@ -22,6 +22,24 @@ spring:
             - Path=/api/v1/users/**
           filters:
             - AuthenticationFilter
+        
+        # Public Product Routes (No Auth Required)
+        - id: product-service-public
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/**
+            - Method=GET
+
+        # Secured Product Routes (Auth Required)
+        - id: product-service-secured
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/**
+            - Method=POST, PUT, DELETE
+          filters:
+            - AuthenticationFilter
+
+
 
 eureka:
   instance:

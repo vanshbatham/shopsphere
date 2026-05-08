@@ -14,5 +14,19 @@ services:
       - postgres-user-data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  postgres-product:
+    image: postgres:15-alpine
+    container_name: shopsphere-postgres-product
+    environment:
+      POSTGRES_USER: vansh
+      POSTGRES_PASSWORD: vansh@postgres
+      POSTGRES_DB: product_service_db
+    ports:
+      - "5433:5432" # Notice the host port is 5433 to avoid collision!
+    volumes:
+      - postgres-product-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
 volumes:
   postgres-user-data:
+  postgres-product-data:

@@ -55,7 +55,6 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
                         .build();
 
             } catch (Exception e) {
-                e.printStackTrace();
                 // if token is expired or forged, reject the request
                 exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                 return exchange.getResponse().setComplete();
