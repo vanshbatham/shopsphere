@@ -22,11 +22,25 @@ services:
       POSTGRES_PASSWORD: vansh@postgres
       POSTGRES_DB: product_service_db
     ports:
-      - "5433:5432" # Notice the host port is 5433 to avoid collision!
+      - "5433:5432"
     volumes:
       - postgres-product-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  postgres-inventory:
+    image: postgres:15-alpine
+    container_name: shopsphere-postgres-inventory
+    environment:
+      POSTGRES_USER: vansh
+      POSTGRES_PASSWORD: vansh@postgres
+      POSTGRES_DB: inventory_service_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-inventory-data:/var/lib/postgresql/data
     restart: unless-stopped
 
 volumes:
   postgres-user-data:
   postgres-product-data:
+  postgres-inventory-data:

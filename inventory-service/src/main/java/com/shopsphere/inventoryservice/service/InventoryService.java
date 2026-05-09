@@ -1,0 +1,95 @@
+package com.shopsphere.inventoryservice.service;
+
+import com.shopsphere.inventoryservice.dto.request.InventoryRequest;
+import com.shopsphere.inventoryservice.dto.response.InventoryResponse;
+import com.shopsphere.inventoryservice.entity.Inventory;
+import com.shopsphere.inventoryservice.repository.InventoryRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class InventoryService {
+
+    private final InventoryRepository inventoryRepository;
+
+    // add stock to inventory (admin action, no locks needed since it's just increasing available quantity)
+    @Transactional
+    public void addStock(InventoryRequest request) {
+        Inventory inventory = inventoryRepository.findBySkuCode(request.skuCode())
+                .orElse(Inventory.builder()
+                        .skuCode(request.skuCode())
+                        .availableQuantity(0)
+                        .reservedQuantity(0)
+                        .build());
+
+        inventory.setAvailableQuantity(inventory.getAvailableQuantity() + request.quantity());
+        inventoryRepository.save(inventory);
+        log.info("Added {} stock for SKU: {}", request.quantity(), request.skuCode());
+    }
+
+    // check stock levels (can be called frequently by the frontend, so we use a read-only transaction without locks for better performance)
+    @Transactional(readOnly = true)
+    public InventoryResponse checkStock(String skuCode) {
+        return inventoryRepository.findBySkuCode(skuCode)
+                .map(i -> new InventoryResponse(i.getSkuCode(), i.getAvailableQuantity(),
+                        i.getReservedQuantity(), i.getAvailableQuantity() > 0))
+                .orElse(new InventoryResponse(skuCode, 0, 0, false));
+    }
+
+    // reserve stock for a checkout session (critical section, must use locks to prevent overselling)
+    @Transactional
+    public boolean reserveStock(InventoryRequest request) {
+        log.info("Attempting to reserve {} units for SKU: {}", request.quantity(), request.skuCode());
+
+        // acquire database Lock
+        Inventory inventory = inventoryRepository.findBySkuCodeForUpdate(request.skuCode())
+                .orElseThrow(() -> new IllegalArgumentException("SKU not found"));
+
+        // validate availability
+        if (inventory.getAvailableQuantity() < request.quantity()) {
+            log.warn("Insufficient stock for SKU: {}", request.skuCode());
+            return false;
+        }
+
+        // move from available to reserved
+        inventory.setAvailableQuantity(inventory.getAvailableQuantity() - request.quantity());
+        inventory.setReservedQuantity(inventory.getReservedQuantity() + request.quantity());
+
+        inventoryRepository.save(inventory);
+        log.info("Successfully reserved {} units for SKU: {}", request.quantity(), request.skuCode());
+        return true;
+        // transaction commits, database lock is released here
+    }
+
+    // release stock back to available (called when payment fails or cart is abandoned, must also use locks to ensure consistency)
+    @Transactional
+    public void releaseStock(InventoryRequest request) {
+        Inventory inventory = inventoryRepository.findBySkuCodeForUpdate(request.skuCode())
+                .orElseThrow(() -> new IllegalArgumentException("SKU not found"));
+
+        // move from reserved back to Available (Payment Failed/Cart Abandoned)
+        inventory.setReservedQuantity(inventory.getReservedQuantity() - request.quantity());
+        inventory.setAvailableQuantity(inventory.getAvailableQuantity() + request.quantity());
+
+        inventoryRepository.save(inventory);
+        log.info("Released {} units for SKU: {}", request.quantity(), request.skuCode());
+    }
+
+    // deduct stock permanently (called when payment succeeds, must also use locks to ensure consistency)
+    @Transactional
+    public void deductStock(InventoryRequest request) {
+        Inventory inventory = inventoryRepository.findBySkuCodeForUpdate(request.skuCode())
+                .orElseThrow(() -> new IllegalArgumentException("SKU not found"));
+
+        // permanently remove from reserved (Payment Succeeded)
+        inventory.setReservedQuantity(inventory.getReservedQuantity() - request.quantity());
+        // available stays the same (we already subtracted it during reservation)
+
+        inventoryRepository.save(inventory);
+        log.info("Permanently deducted {} units for SKU: {}", request.quantity(), request.skuCode());
+    }
+}

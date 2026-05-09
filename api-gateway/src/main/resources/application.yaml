@@ -39,6 +39,22 @@ spring:
           filters:
             - AuthenticationFilter
 
+        # Public Inventory Route (Checking Stock)
+        - id: inventory-service-public
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/v1/inventory/**
+            - Method=GET
+
+        # Secured Inventory Routes (Adding/Modifying Stock)
+        - id: inventory-service-secured
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/v1/inventory/**
+            - Method=POST
+          filters:
+            - AuthenticationFilter
+
 
 
 eureka:
