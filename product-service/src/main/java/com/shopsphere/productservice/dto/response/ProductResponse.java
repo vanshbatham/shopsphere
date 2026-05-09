@@ -1,9 +1,10 @@
 package com.shopsphere.productservice.dto.response;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public record ProductResponse(
-        Long id,
+        UUID id,
         String name,
         String description,
         BigDecimal price,
