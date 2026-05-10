@@ -8,9 +8,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
+import java.util.UUID;
 
-public interface InventoryRepository extends JpaRepository<Inventory, Long> {
-    
+public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
+
     Optional<Inventory> findBySkuCode(String skuCode);
 
     // pessimistic write lock (used when we are about to update the inventory, ensures no other transaction can read or write until we're done)

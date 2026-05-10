@@ -55,6 +55,14 @@ spring:
           filters:
             - AuthenticationFilter
 
+        # Secured Order Route
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/api/v1/orders/**
+          filters:
+            - AuthenticationFilter
+
 
 
 eureka:

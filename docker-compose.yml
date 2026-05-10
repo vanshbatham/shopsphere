@@ -40,7 +40,21 @@ services:
       - postgres-inventory-data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  postgres-order:
+    image: postgres:15-alpine
+    container_name: shopsphere-postgres-order
+    environment:
+      POSTGRES_USER: vansh
+      POSTGRES_PASSWORD: vansh@postgres
+      POSTGRES_DB: order_service_db
+    ports:
+      - "5435:5432" # Host port 5435
+    volumes:
+      - postgres-order-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
 volumes:
   postgres-user-data:
   postgres-product-data:
   postgres-inventory-data:
+  postgres-order-data:
