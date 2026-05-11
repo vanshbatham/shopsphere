@@ -8,6 +8,7 @@ import com.shopsphere.orderservice.entity.OrderLineItem;
 import com.shopsphere.orderservice.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +22,7 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final InventoryClient inventoryClient;
+    private final KafkaTemplate<String, String> kafkaTemplate;
 
     @Transactional
     public String placeOrder(OrderRequest orderRequest, String userId) {
@@ -53,6 +55,10 @@ public class OrderService {
 
             orderRepository.save(order);
             log.info("Order {} placed successfully", order.getOrderNumber());
+
+            String message = String.format("Order Placed Successfully! Order Number: %s, User ID: %s", order.getOrderNumber(), userId);
+            kafkaTemplate.send("notificationTopic", message);
+            log.info("Notification event sent to Kafka topic");
 
             // In a full system, we would drop a message to Kafka here to trigger the Payment Service
 
