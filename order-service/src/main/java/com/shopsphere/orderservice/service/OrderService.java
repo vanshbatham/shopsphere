@@ -6,6 +6,7 @@ import com.shopsphere.orderservice.dto.request.OrderRequest;
 import com.shopsphere.orderservice.entity.Order;
 import com.shopsphere.orderservice.entity.OrderLineItem;
 import com.shopsphere.orderservice.repository.OrderRepository;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -25,6 +26,7 @@ public class OrderService {
     private final KafkaTemplate<String, String> kafkaTemplate;
 
     @Transactional
+    @CircuitBreaker(name = "inventoryService", fallbackMethod = "fallbackPlaceOrder")
     public String placeOrder(OrderRequest orderRequest, String userId) {
 
         // 1. We will only handle single-item orders for this simulation to keep the Saga simple
@@ -33,6 +35,8 @@ public class OrderService {
 
         // 2. Synchronous Network Call: Attempt to Reserve Stock
         log.info("Calling Inventory Service to reserve {} units of {}", itemDto.quantity(), itemDto.skuCode());
+
+        // This is the call protected by the Circuit Breaker
         Boolean isReserved = inventoryClient.reserveStock(inventoryRequest);
 
         if (Boolean.FALSE.equals(isReserved)) {
@@ -70,5 +74,10 @@ public class OrderService {
             inventoryClient.releaseStock(inventoryRequest);
             throw new RuntimeException("Order creation failed, stock released.");
         }
+    }
+
+    public String fallbackPlaceOrder(OrderRequest orderRequest, String userId, Exception e) {
+        log.error("Circuit Breaker triggered! Fallback active. Error: {}", e.getMessage());
+        return "Oops! Our inventory system is currently busy or down. Your order cannot be placed right now. Please try again in a few moments.";
     }
 }
