@@ -63,6 +63,14 @@ spring:
           filters:
             - AuthenticationFilter
 
+        # Secured Cart Route
+        - id: cart-service
+          uri: lb://cart-service
+          predicates:
+            - Path=/api/v1/carts/**
+          filters:
+            - AuthenticationFilter
+
 
 
 eureka:
