@@ -72,6 +72,21 @@ services:
       - postgres-order-data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  postgres-payment:
+    image: postgres:15-alpine
+    container_name: shopsphere-postgres-payment
+    environment:
+      POSTGRES_USER: vansh
+      POSTGRES_PASSWORD: vansh@postgres
+      POSTGRES_DB: payment_service_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres-payment-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+
+
   redis:
     image: redis:7-alpine
     container_name: shopsphere-redis
@@ -84,3 +99,4 @@ volumes:
   postgres-product-data:
   postgres-inventory-data:
   postgres-order-data:
+  postgres-payment-data:

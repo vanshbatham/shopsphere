@@ -1,7 +1,8 @@
 package com.shopsphere.orderservice.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shopsphere.orderservice.client.InventoryClient;
-
+import com.shopsphere.orderservice.dto.request.OrderPlacedEvent;
 import com.shopsphere.orderservice.dto.request.OrderRequest;
 import com.shopsphere.orderservice.entity.Order;
 import com.shopsphere.orderservice.entity.OrderLineItem;
@@ -13,6 +14,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -45,16 +47,18 @@ public class OrderService {
 
         // 3. The stock is securely reserved. Now attempt to save the order locally.
         try {
+            List<OrderLineItem> items = new ArrayList<>();
+            items.add(OrderLineItem.builder()
+                    .skuCode(itemDto.skuCode())
+                    .price(itemDto.price())
+                    .quantity(itemDto.quantity())
+                    .build()
+            );
+
             Order order = Order.builder()
                     .orderNumber(UUID.randomUUID().toString())
                     .userId(userId)
-                    .orderLineItems(List.of(
-                            OrderLineItem.builder()
-                                    .skuCode(itemDto.skuCode())
-                                    .price(itemDto.price())
-                                    .quantity(itemDto.quantity())
-                                    .build()
-                    ))
+                    .orderLineItems(items)
                     .build();
 
             orderRepository.save(order);
@@ -64,13 +68,25 @@ public class OrderService {
             kafkaTemplate.send("notificationTopic", message);
             log.info("Notification event sent to Kafka topic");
 
-            // In a full system, we would drop a message to Kafka here to trigger the Payment Service
+            orderRepository.save(order);
+
+            // creating the structured JSON event instead of a String
+            OrderPlacedEvent event = new OrderPlacedEvent(order.getOrderNumber(), userId, itemDto.price());
+
+            // Jackson ObjectMapper to convert the Record to a JSON String
+            ObjectMapper objectMapper = new ObjectMapper();
+            String jsonMessage = objectMapper.writeValueAsString(event);
+
+            // send to the specific topic Payment Service is listening to
+            kafkaTemplate.send("order-events-topic", jsonMessage);
+
+            log.info("OrderPlacedEvent dispatched to Kafka for Order Number: {}", order.getOrderNumber());
 
             return "Order Placed Successfully";
 
         } catch (Exception e) {
-            // SAGA COMPENSATION: If the database crashes or saving fails, release the locked inventory
-            log.error("Failed to save order locally. Triggering Saga Compensation: Releasing Inventory");
+            // passing 'e' to the logger so it prints the full stack trace!
+            log.error("Transaction failed. Triggering Saga Compensation. Root cause: {}", e.getMessage(), e);
             inventoryClient.releaseStock(inventoryRequest);
             throw new RuntimeException("Order creation failed, stock released.");
         }

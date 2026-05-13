@@ -17,9 +17,14 @@ public class OrderController {
     @PostMapping
     public ResponseEntity<String> placeOrder(
             @RequestBody OrderRequest orderRequest,
-            @RequestHeader("X-User-Id") String userId) { // Trust the Gateway!
+            @RequestHeader("X-User-Id") String userId) {
 
         String response = orderService.placeOrder(orderRequest, userId);
+        
+        if (response.contains("Oops!")) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(response);
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }
