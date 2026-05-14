@@ -1,5 +1,6 @@
 package com.shopsphere.inventoryservice.service;
 
+import com.shopsphere.inventoryservice.client.ProductClient;
 import com.shopsphere.inventoryservice.dto.request.InventoryRequest;
 import com.shopsphere.inventoryservice.dto.response.InventoryResponse;
 import com.shopsphere.inventoryservice.entity.Inventory;
@@ -15,20 +16,33 @@ import org.springframework.transaction.annotation.Transactional;
 public class InventoryService {
 
     private final InventoryRepository inventoryRepository;
+    private final ProductClient productClient;
 
     // add stock to inventory (admin action, no locks needed since it's just increasing available quantity)
     @Transactional
-    public void addStock(InventoryRequest request) {
-        Inventory inventory = inventoryRepository.findBySkuCode(request.skuCode())
+    public void addStock(String skuCode, Integer quantity) {
+        log.info("Admin attempting to add {} units for SKU: {}", quantity, skuCode);
+
+        // check if product exists in Product Catalog before adding inventory
+        Boolean productExists = productClient.checkProductExists(skuCode);
+
+        if (Boolean.FALSE.equals(productExists)) {
+            log.error("Failed to add inventory: SKU {} does not exist in Product Catalog", skuCode);
+            throw new IllegalArgumentException("Cannot add inventory for a non-existent product SKU: " + skuCode);
+        }
+
+        // proceed with normal Inventory saving logic...
+        Inventory inventory = inventoryRepository.findBySkuCode(skuCode)
                 .orElse(Inventory.builder()
-                        .skuCode(request.skuCode())
+                        .skuCode(skuCode)
                         .availableQuantity(0)
                         .reservedQuantity(0)
                         .build());
 
-        inventory.setAvailableQuantity(inventory.getAvailableQuantity() + request.quantity());
+        inventory.setAvailableQuantity(inventory.getAvailableQuantity() + quantity);
         inventoryRepository.save(inventory);
-        log.info("Added {} stock for SKU: {}", request.quantity(), request.skuCode());
+
+        log.info("Successfully added stock. New available quantity for SKU {}: {}", skuCode, inventory.getAvailableQuantity());
     }
 
     // check stock levels (can be called frequently by the frontend, so we use a read-only transaction without locks for better performance)

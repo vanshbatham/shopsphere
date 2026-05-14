@@ -65,4 +65,9 @@ public class ProductController {
         return ResponseEntity.ok(productService.getProductById(productId));
     }
 
+    @GetMapping("/exists/{skuCode}")
+    public ResponseEntity<Boolean> checkProductExists(@PathVariable String skuCode) {
+        return ResponseEntity.ok(productService.existsBySkuCode(skuCode));
+    }
+
 }

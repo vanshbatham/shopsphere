@@ -9,4 +9,6 @@ import java.util.UUID;
 
 public interface ProductRepository extends JpaRepository<Product, UUID> {
     Page<Product> findByCategoryId(String categoryId, Pageable pageable);
+
+    boolean existsBySkuCode(String skuCode);
 }

@@ -19,7 +19,7 @@ public class InventoryController {
 
     @PostMapping("/add")
     public ResponseEntity<String> addStock(@Valid @RequestBody InventoryRequest request) {
-        inventoryService.addStock(request);
+        inventoryService.addStock(request.skuCode(), request.quantity());
         return ResponseEntity.status(HttpStatus.CREATED).body("Stock added successfully");
     }
 

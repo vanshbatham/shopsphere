@@ -91,6 +91,11 @@ public class ProductService {
         return mapToProductResponse(product);
     }
 
+    @Transactional(readOnly = true)
+    public boolean existsBySkuCode(String skuCode) {
+        return productRepository.existsBySkuCode(skuCode);
+    }
+
     private ProductResponse mapToProductResponse(Product product) {
         return new ProductResponse(
                 product.getId(),
