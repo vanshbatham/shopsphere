@@ -1,0 +1,21 @@
+package com.shopsphere.orderservice.dto.response;
+
+import com.shopsphere.orderservice.entity.OrderLineItem;
+import lombok.*;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+@Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class OrderResponse {
+    private UUID id;
+    private String orderNumber;
+    private String userId;
+    private List<OrderLineItem> orderLineItems;
+    private LocalDateTime createdAt;
+}

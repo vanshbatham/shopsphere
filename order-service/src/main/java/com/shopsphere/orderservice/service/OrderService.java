@@ -1,9 +1,12 @@
 package com.shopsphere.orderservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shopsphere.orderservice.client.CartClient;
 import com.shopsphere.orderservice.client.InventoryClient;
+import com.shopsphere.orderservice.dto.request.CartDto;
+import com.shopsphere.orderservice.dto.request.CartItemDto;
 import com.shopsphere.orderservice.dto.request.OrderPlacedEvent;
-import com.shopsphere.orderservice.dto.request.OrderRequest;
+import com.shopsphere.orderservice.dto.response.OrderResponse;
 import com.shopsphere.orderservice.entity.Order;
 import com.shopsphere.orderservice.entity.OrderLineItem;
 import com.shopsphere.orderservice.repository.OrderRepository;
@@ -14,6 +17,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -25,75 +29,126 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final InventoryClient inventoryClient;
+    private final CartClient cartClient; // NEW: Injected Cart Client
     private final KafkaTemplate<String, String> kafkaTemplate;
 
     @Transactional
     @CircuitBreaker(name = "inventoryService", fallbackMethod = "fallbackPlaceOrder")
-    public String placeOrder(OrderRequest orderRequest, String userId) {
+    public String placeOrder(String userId) {
 
-        // 1. We will only handle single-item orders for this simulation to keep the Saga simple
-        OrderRequest.OrderLineItemDto itemDto = orderRequest.orderLineItems().getFirst();
-        InventoryClient.InventoryRequest inventoryRequest = new InventoryClient.InventoryRequest(itemDto.skuCode(), itemDto.quantity());
+        log.info("Initiating checkout orchestration for user: {}", userId);
 
-        // 2. Synchronous Network Call: Attempt to Reserve Stock
-        log.info("Calling Inventory Service to reserve {} units of {}", itemDto.quantity(), itemDto.skuCode());
-
-        // This is the call protected by the Circuit Breaker
-        Boolean isReserved = inventoryClient.reserveStock(inventoryRequest);
-
-        if (Boolean.FALSE.equals(isReserved)) {
-            throw new IllegalArgumentException("Product is out of stock, please try again later");
+        // 1. GET THE SECURE CART
+        CartDto cart = cartClient.getCart(userId);
+        if (cart == null || cart.items() == null || cart.items().isEmpty()) {
+            throw new IllegalArgumentException("Cannot place order: Cart is empty.");
         }
 
-        // 3. The stock is securely reserved. Now attempt to save the order locally.
-        try {
-            List<OrderLineItem> items = new ArrayList<>();
-            items.add(OrderLineItem.builder()
-                    .skuCode(itemDto.skuCode())
-                    .price(itemDto.price())
-                    .quantity(itemDto.quantity())
-                    .build()
-            );
+        List<OrderLineItem> orderLineItems = new ArrayList<>();
+        BigDecimal totalAmount = BigDecimal.ZERO;
 
+        // 2. PROCESS ITEMS AND CALCULATE SECURE TOTAL
+        for (CartItemDto cartItem : cart.items()) {
+            orderLineItems.add(OrderLineItem.builder()
+                    .skuCode(cartItem.skuCode())
+                    .price(cartItem.snapshotPrice())
+                    .quantity(cartItem.quantity())
+                    .build());
+
+            BigDecimal itemTotal = cartItem.snapshotPrice().multiply(BigDecimal.valueOf(cartItem.quantity()));
+            totalAmount = totalAmount.add(itemTotal);
+        }
+
+        // 3. HARD INVENTORY CHECK (Synchronous Network Call)
+        for (OrderLineItem item : orderLineItems) {
+            InventoryClient.InventoryRequest inventoryRequest = new InventoryClient.InventoryRequest(
+                    item.getSkuCode(), item.getQuantity());
+            log.info("Calling Inventory Service to reserve {} units of {}", item.getQuantity(), item.getSkuCode());
+
+            // This call is protected by the Circuit Breaker
+            Boolean isReserved = inventoryClient.reserveStock(inventoryRequest);
+
+            if (Boolean.FALSE.equals(isReserved)) {
+                log.error("Insufficient stock for SKU: {}", item.getSkuCode());
+                throw new IllegalArgumentException("Insufficient stock for item: " + item.getSkuCode());
+            }
+        }
+
+        // 4. THE TRANSACTION BLOCK (Save Order and Publish Events)
+        try {
             Order order = Order.builder()
                     .orderNumber(UUID.randomUUID().toString())
                     .userId(userId)
-                    .orderLineItems(items)
+                    .orderLineItems(orderLineItems)
                     .build();
 
             orderRepository.save(order);
             log.info("Order {} placed successfully", order.getOrderNumber());
 
+            // Notification Event
             String message = String.format("Order Placed Successfully! Order Number: %s, User ID: %s", order.getOrderNumber(), userId);
             kafkaTemplate.send("notificationTopic", message);
             log.info("Notification event sent to Kafka topic");
 
-            orderRepository.save(order);
-
-            // creating the structured JSON event instead of a String
-            OrderPlacedEvent event = new OrderPlacedEvent(order.getOrderNumber(), userId, itemDto.price());
-
-            // Jackson ObjectMapper to convert the Record to a JSON String
+            // Payment Event (Using the mathematically calculated total)
+            OrderPlacedEvent event = new OrderPlacedEvent(order.getOrderNumber(), userId, totalAmount);
             ObjectMapper objectMapper = new ObjectMapper();
             String jsonMessage = objectMapper.writeValueAsString(event);
 
-            // send to the specific topic Payment Service is listening to
             kafkaTemplate.send("order-events-topic", jsonMessage);
-
             log.info("OrderPlacedEvent dispatched to Kafka for Order Number: {}", order.getOrderNumber());
 
-            return "Order Placed Successfully";
+            // 5. CLEAR THE CART
+            cartClient.clearCart(userId);
+            log.info("Cart cleared for user: {}", userId);
+
+            return "Order Placed Successfully. Order ID: " + order.getOrderNumber();
 
         } catch (Exception e) {
-            // passing 'e' to the logger so it prints the full stack trace!
-            log.error("Transaction failed. Triggering Saga Compensation. Root cause: {}", e.getMessage(), e);
-            inventoryClient.releaseStock(inventoryRequest);
-            throw new RuntimeException("Order creation failed, stock released.");
+            log.error("Transaction failed during finalization. Root cause: {}", e.getMessage(), e);
+
+            // SAGA COMPENSATION: Release the stock we just reserved!
+            for (OrderLineItem item : orderLineItems) {
+                inventoryClient.releaseStock(new InventoryClient.InventoryRequest(item.getSkuCode(), item.getQuantity()));
+            }
+            throw new RuntimeException("Checkout failed, inventory released.");
         }
     }
 
-    public String fallbackPlaceOrder(OrderRequest orderRequest, String userId, Exception e) {
+    // fallback method for Circuit Breaker
+    public String fallbackPlaceOrder(String userId, Exception e) {
         log.error("Circuit Breaker triggered! Fallback active. Error: {}", e.getMessage());
-        return "Oops! Our inventory system is currently busy or down. Your order cannot be placed right now. Please try again in a few moments.";
+        return "Oops! Our checkout system is currently busy or down. Your order cannot be placed right now. Please try again in a few moments.";
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getAllOrdersForUser(String userId) {
+        return orderRepository.findByUserId(userId).stream()
+                .map(this::mapOrderToOrderResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getAllOrders() {
+        return orderRepository.findAll().stream()
+                .map(this::mapOrderToOrderResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public OrderResponse getOrderById(UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Order not found with ID: " + orderId));
+        return mapOrderToOrderResponse(order);
+    }
+
+    public OrderResponse mapOrderToOrderResponse(Order order) {
+        return OrderResponse.builder()
+                .id(order.getId())
+                .orderNumber(order.getOrderNumber())
+                .userId(order.getUserId())
+                .orderLineItems(order.getOrderLineItems())
+                .createdAt(order.getCreatedAt())
+                .build();
     }
 }

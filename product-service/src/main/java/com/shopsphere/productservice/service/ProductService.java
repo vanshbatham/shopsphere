@@ -96,6 +96,13 @@ public class ProductService {
         return productRepository.existsBySkuCode(skuCode);
     }
 
+    @Transactional(readOnly = true)
+    public ProductResponse getProductBySkuCode(String skuCode) {
+        Product product = productRepository.findBySkuCode(skuCode)
+                .orElseThrow(() -> new IllegalArgumentException("Product not found with SKU: " + skuCode));
+        return mapToProductResponse(product);
+    }
+
     private ProductResponse mapToProductResponse(Product product) {
         return new ProductResponse(
                 product.getId(),

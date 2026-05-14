@@ -70,4 +70,9 @@ public class ProductController {
         return ResponseEntity.ok(productService.existsBySkuCode(skuCode));
     }
 
+    @GetMapping("/sku/{skuCode}")
+    public ResponseEntity<ProductResponse> getProductBySkuCode(@PathVariable String skuCode) {
+        return ResponseEntity.ok(productService.getProductBySkuCode(skuCode));
+    }
+
 }
