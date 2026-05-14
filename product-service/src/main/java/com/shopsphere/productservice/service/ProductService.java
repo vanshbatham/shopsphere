@@ -1,16 +1,21 @@
 package com.shopsphere.productservice.service;
 
-
 import com.shopsphere.productservice.dto.request.ProductRequest;
 import com.shopsphere.productservice.dto.response.ProductResponse;
+import com.shopsphere.productservice.entity.Category;
 import com.shopsphere.productservice.entity.Product;
+import com.shopsphere.productservice.repository.CategoryRepository;
 import com.shopsphere.productservice.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -19,20 +24,57 @@ import java.util.stream.Collectors;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final CategoryRepository categoryRepository;
+
+    public Category createCategory(String name, String description) {
+        Category category = Category.builder()
+                .name(name)
+                .description(description)
+                .build();
+        return categoryRepository.save(category);
+    }
 
     @Transactional
-    public ProductResponse createProduct(ProductRequest request) {
+    public ProductResponse createProduct(ProductRequest request, String categoryId) {
+        Category category = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new IllegalArgumentException("Category not found"));
+
         Product product = Product.builder()
                 .name(request.name())
                 .description(request.description())
                 .price(request.price())
-                .category(request.category())
+                .skuCode(request.skuCode())
+                .category(category)
                 .imageUrl(request.imageUrl())
                 .build();
 
         Product savedProduct = productRepository.save(product);
         log.info("Product created with ID: {}", savedProduct.getId());
-        return mapToProductResponse(savedProduct);
+        return new ProductResponse(
+                savedProduct.getId(),
+                savedProduct.getName(),
+                savedProduct.getDescription(),
+                savedProduct.getPrice(),
+                savedProduct.getSkuCode(),
+                category.getName(),
+                savedProduct.getImageUrl()
+        );
+    }
+
+    public Page<ProductResponse> getProductsByCategory(String categoryId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+
+        Page<Product> productPage = productRepository.findByCategoryId(categoryId, pageable);
+
+        return productPage.map(product -> new ProductResponse(
+                product.getId(),
+                product.getName(),
+                product.getDescription(),
+                product.getPrice(),
+                product.getSkuCode(),
+                product.getCategory().getName(),
+                product.getImageUrl()
+        ));
     }
 
     @Transactional(readOnly = true)
@@ -42,13 +84,21 @@ public class ProductService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public ProductResponse getProductById(String productId) {
+        Product product = productRepository.findById(UUID.fromString(productId))
+                .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+        return mapToProductResponse(product);
+    }
+
     private ProductResponse mapToProductResponse(Product product) {
         return new ProductResponse(
                 product.getId(),
                 product.getName(),
                 product.getDescription(),
                 product.getPrice(),
-                product.getCategory(),
+                product.getSkuCode(),
+                product.getCategory().getName(),
                 product.getImageUrl()
         );
     }

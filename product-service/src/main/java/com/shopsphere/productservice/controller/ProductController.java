@@ -3,9 +3,11 @@ package com.shopsphere.productservice.controller;
 
 import com.shopsphere.productservice.dto.request.ProductRequest;
 import com.shopsphere.productservice.dto.response.ProductResponse;
+import com.shopsphere.productservice.entity.Category;
 import com.shopsphere.productservice.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -25,17 +27,42 @@ public class ProductController {
         return new ResponseEntity<>(productService.getAllProducts(), HttpStatus.OK);
     }
 
-    // SECURED ENDPOINT (Admin Only)
-    @PostMapping
-    public ResponseEntity<ProductResponse> createProduct(
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @Valid @RequestBody ProductRequest request) {
+    @PostMapping("/categories")
+    public ResponseEntity<Category> createCategory(@RequestHeader(value = "X-User-Role", required = false) String role,
+                                                   @RequestParam String name,
+                                                   @RequestParam String description) {
 
-        // Manual RBAC check relying on Gateway trust
         if (!"ADMIN".equals(role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
-        return new ResponseEntity<>(productService.createProduct(request), HttpStatus.CREATED);
+        return new ResponseEntity<>(productService.createCategory(name, description), HttpStatus.CREATED);
     }
+
+    @PostMapping("/category/{categoryId}")
+    public ResponseEntity<ProductResponse> createProduct(@RequestHeader(value = "X-User-Role", required = false) String role,
+                                                         @PathVariable String categoryId,
+                                                         @Valid @RequestBody ProductRequest productRequest) {
+
+        if (!"ADMIN".equals(role) && !"SELLER".equals(role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        return new ResponseEntity<>(productService.createProduct(productRequest, categoryId), HttpStatus.CREATED);
+    }
+
+    @GetMapping("/category/{categoryId}")
+    public ResponseEntity<Page<ProductResponse>> getProductsByCategory(
+            @PathVariable String categoryId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        return ResponseEntity.ok(productService.getProductsByCategory(categoryId, page, size));
+    }
+
+    @GetMapping("/{productId}")
+    public ResponseEntity<ProductResponse> getProductById(@PathVariable String productId) {
+        return ResponseEntity.ok(productService.getProductById(productId));
+    }
+
 }

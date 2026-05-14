@@ -31,10 +31,14 @@ public class Product {
     @Column(nullable = false)
     private BigDecimal price;
 
-    @Column(nullable = false)
-    private String category;
-
     private String imageUrl; // URL to CDN/S3 bucket
+
+    @Column(nullable = false)
+    private String skuCode;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = false)
+    private Category category;
 
     @CreationTimestamp
     @Column(updatable = false)
