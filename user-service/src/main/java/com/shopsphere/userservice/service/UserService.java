@@ -105,6 +105,13 @@ public class UserService {
         return mapToUserResponse(updatedUser);
     }
 
+    @Transactional(readOnly = true)
+    public UserResponse getUserById(String userId) {
+        User user = userRepository.findById(UUID.fromString(userId))
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        return mapToUserResponse(user);
+    }
+
     private UserResponse createUserWithRole(UserRegistrationRequest request, Role role) {
         if (userRepository.existsByUsername(request.username())) {
             throw new IllegalArgumentException("Username is already taken");
@@ -139,10 +146,13 @@ public class UserService {
                 user.getEmail(),
                 user.getFirstName(),
                 user.getLastName(),
+                user.getPhoneNumber(),
                 user.getRole(),
                 user.isActive(),
                 user.isEmailVerified(),
                 user.getCreatedAt()
         );
     }
+
+
 }

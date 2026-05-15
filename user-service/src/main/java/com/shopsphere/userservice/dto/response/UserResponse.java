@@ -11,6 +11,7 @@ public record UserResponse(
         String email,
         String firstName,
         String lastName,
+        String phoneNumber,
         Role role,
         boolean isActive,
         boolean emailVerified,

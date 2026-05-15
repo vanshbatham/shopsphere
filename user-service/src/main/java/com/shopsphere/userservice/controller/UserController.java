@@ -57,4 +57,9 @@ public class UserController {
 
         return ResponseEntity.ok(userService.updateUser(userId, request));
     }
+
+    @GetMapping("/me")
+    public ResponseEntity<UserResponse> getUserById(@RequestHeader("X-User-Id") String userId) {
+        return ResponseEntity.ok(userService.getUserById(userId));
+    }
 }
