@@ -9,6 +9,7 @@ import com.shopsphere.orderservice.dto.request.OrderPlacedEvent;
 import com.shopsphere.orderservice.dto.response.OrderResponse;
 import com.shopsphere.orderservice.entity.Order;
 import com.shopsphere.orderservice.entity.OrderLineItem;
+import com.shopsphere.orderservice.enums.OrderStatus;
 import com.shopsphere.orderservice.repository.OrderRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
@@ -82,6 +83,9 @@ public class OrderService {
                     .orderLineItems(orderLineItems)
                     .build();
 
+
+            order.setStatus(OrderStatus.PENDING);
+
             orderRepository.save(order);
             log.info("Order {} placed successfully", order.getOrderNumber());
 
@@ -154,6 +158,7 @@ public class OrderService {
                 .orderLineItems(order.getOrderLineItems())
                 .createdAt(order.getCreatedAt())
                 .totalPrice(calculatedTotal)
+                .status(order.getStatus())
                 .build();
     }
 }

@@ -1,6 +1,7 @@
 package com.shopsphere.orderservice.dto.response;
 
 import com.shopsphere.orderservice.entity.OrderLineItem;
+import com.shopsphere.orderservice.enums.OrderStatus;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -20,4 +21,5 @@ public class OrderResponse {
     private List<OrderLineItem> orderLineItems;
     private BigDecimal totalPrice;
     private LocalDateTime createdAt;
+    private OrderStatus status;
 }

@@ -1,5 +1,6 @@
 package com.shopsphere.orderservice.entity;
 
+import com.shopsphere.orderservice.enums.OrderStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -26,6 +27,9 @@ public class Order {
     @OneToMany(cascade = CascadeType.ALL)
     @JoinColumn(name = "order_id", referencedColumnName = "id")
     private List<OrderLineItem> orderLineItems;
+
+    @Enumerated(EnumType.STRING)
+    private OrderStatus status;
 
     @CreationTimestamp
     private LocalDateTime createdAt;
