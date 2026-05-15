@@ -1,20 +1,24 @@
 package com.shopsphere.userservice.service;
 
-import com.shopsphere.userservice.dto.request.LoginRequest;
-import com.shopsphere.userservice.dto.request.UserRegistrationRequest;
-import com.shopsphere.userservice.dto.request.UserUpdateRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shopsphere.userservice.dto.request.*;
 import com.shopsphere.userservice.dto.response.AuthResponse;
 import com.shopsphere.userservice.dto.response.UserResponse;
+import com.shopsphere.userservice.entity.PasswordResetToken;
 import com.shopsphere.userservice.entity.Role;
 import com.shopsphere.userservice.entity.User;
+import com.shopsphere.userservice.repository.PasswordResetTokenRepository;
 import com.shopsphere.userservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -25,6 +29,8 @@ public class UserService {
     private final JwtService jwtService;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordResetTokenRepository tokenRepository;
+    private final KafkaTemplate<String, String> kafkaTemplate;
 
     @Transactional
     public UserResponse registerUser(UserRegistrationRequest request) {
@@ -110,6 +116,74 @@ public class UserService {
         User user = userRepository.findById(UUID.fromString(userId))
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
         return mapToUserResponse(user);
+    }
+
+    @Transactional
+    public void initiatePasswordReset(String email) {
+        // find the user. If they don't exist, silently exit
+        Optional<User> userOptional = userRepository.findByEmail(email);
+        if (userOptional.isEmpty()) {
+            log.warn("Password reset requested for non-existent email: {}", email);
+            return;
+        }
+
+        User user = userOptional.get();
+
+        // wipe any existing tokens for this user so they only have one active code
+        tokenRepository.deleteByUser(user);
+        tokenRepository.flush();
+
+        // generate a secure 6-digit OTP
+        SecureRandom random = new SecureRandom();
+        String otp = String.format("%06d", random.nextInt(999999));
+
+        // save to Database (Expires in 15 minutes)
+        PasswordResetToken resetToken = PasswordResetToken.builder()
+                .token(otp)
+                .user(user)
+                .expiryDate(LocalDateTime.now().plusMinutes(15))
+                .build();
+        tokenRepository.save(resetToken);
+
+        // fire Kafka Event
+        try {
+            PasswordResetRequestedEvent event = new PasswordResetRequestedEvent(user.getEmail(), user.getFirstName(), otp);
+            ObjectMapper objectMapper = new ObjectMapper();
+            String jsonMessage = objectMapper.writeValueAsString(event);
+
+            kafkaTemplate.send("password-reset-topic", jsonMessage);
+            log.info("Password reset OTP generated and sent to Kafka for user: {}", user.getEmail());
+        } catch (Exception e) {
+            log.error("Failed to publish password reset event to Kafka", e);
+            throw new RuntimeException("Could not process password reset request");
+        }
+    }
+
+    @Transactional
+    public void resetPassword(PasswordResetRequest request) {
+        // find the token in the db
+        PasswordResetToken resetToken = tokenRepository.findByToken(request.token())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired token"));
+
+        // security check: does the token actually belong to the email provided?
+        if (!resetToken.getUser().getEmail().equalsIgnoreCase(request.email())) {
+            throw new IllegalArgumentException("Invalid or expired token");
+        }
+
+        // expiration Check: is it past the 15-minute window?
+        if (resetToken.getExpiryDate().isBefore(LocalDateTime.now())) {
+            tokenRepository.delete(resetToken); // Clean up the dead token
+            throw new IllegalArgumentException("Token has expired. Please request a new one.");
+        }
+
+        // update the User's Password
+        User user = resetToken.getUser();
+        user.setPassword(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+
+        // invalidate the Token (Single-Use Rule)
+        tokenRepository.delete(resetToken);
+        log.info("Password successfully reset for user: {}", user.getEmail());
     }
 
     private UserResponse createUserWithRole(UserRegistrationRequest request, Role role) {

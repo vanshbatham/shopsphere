@@ -1,6 +1,7 @@
 package com.shopsphere.userservice.controller;
 
 import com.shopsphere.userservice.dto.request.LoginRequest;
+import com.shopsphere.userservice.dto.request.PasswordResetRequest;
 import com.shopsphere.userservice.dto.request.UserRegistrationRequest;
 import com.shopsphere.userservice.dto.request.UserUpdateRequest;
 import com.shopsphere.userservice.dto.response.AuthResponse;
@@ -61,5 +62,17 @@ public class UserController {
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getUserById(@RequestHeader("X-User-Id") String userId) {
         return ResponseEntity.ok(userService.getUserById(userId));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<String> forgotPassword(@RequestParam String email) {
+        userService.initiatePasswordReset(email);
+        return ResponseEntity.ok("If an account exists with that email, a password reset code has been sent.");
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(@Valid @RequestBody PasswordResetRequest request) {
+        userService.resetPassword(request);
+        return ResponseEntity.ok("Password has been successfully reset. You can now log in.");
     }
 }
