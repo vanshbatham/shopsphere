@@ -1,6 +1,5 @@
 package com.shopsphere.userservice.controller;
 
-
 import com.shopsphere.userservice.dto.request.LoginRequest;
 import com.shopsphere.userservice.dto.request.UserRegistrationRequest;
 import com.shopsphere.userservice.dto.response.AuthResponse;
@@ -21,32 +20,33 @@ public class UserController {
 
     @PostMapping("/register")
     public ResponseEntity<UserResponse> register(@Valid @RequestBody UserRegistrationRequest request) {
-        UserResponse response = userService.registerUser(request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return new ResponseEntity<>(userService.registerUser(request), HttpStatus.CREATED);
     }
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        AuthResponse response = userService.login(request);
-        return new ResponseEntity<>(response, HttpStatus.OK);
+        return new ResponseEntity<>(userService.login(request), HttpStatus.OK);
     }
 
-    // NOTE: This will be heavily secured with JWT in the next block.
-    // Only an authenticated BUYER can hit this.
+    @GetMapping("/profile")
+    public ResponseEntity<UserResponse> getProfile(@RequestHeader("X-User-Id") String userId) {
+        return ResponseEntity.ok(userService.getUserProfile(userId));
+    }
+
     @PostMapping("/become-seller")
-    public ResponseEntity<String> becomeSeller(@RequestHeader("X-User-Id") String userId,
-                                               @RequestHeader("X-User-Role") String role) {
-
-        // This proves the Gateway successfully intercepted, validated, and mutated the request!
-        String responseMessage = String.format("Success! Gateway says you are User ID: %s with Role: %s. Seller onboarding flow to be implemented.", userId, role);
-
+    public ResponseEntity<String> becomeSeller(@RequestHeader("X-User-Id") String userId) {
+        String responseMessage = userService.upgradeToSeller(userId);
         return ResponseEntity.status(HttpStatus.OK).body(responseMessage);
     }
 
-    // NOTE: This will be restricted strictly to users who ALREADY have the ADMIN role.
     @PostMapping("/admin/create")
-    public ResponseEntity<String> createAdmin() {
-        // Future logic: Allow an existing admin to provision a new admin account
-        return ResponseEntity.status(HttpStatus.CREATED).body("Admin creation flow to be implemented");
+    public ResponseEntity<UserResponse> createAdmin(@RequestHeader("X-User-Role") String role,
+            @Valid @RequestBody UserRegistrationRequest request) {
+
+        if (!"ADMIN".equals(role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(userService.registerAdmin(request));
     }
 }

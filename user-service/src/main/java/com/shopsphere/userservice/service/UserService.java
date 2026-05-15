@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -21,14 +22,59 @@ import java.time.LocalDateTime;
 public class UserService {
 
     private final JwtService jwtService;
-
     private final UserRepository userRepository;
-
     private final PasswordEncoder passwordEncoder;
 
     @Transactional
     public UserResponse registerUser(UserRegistrationRequest request) {
-        // validation check
+        return createUserWithRole(request, Role.BUYER);
+    }
+
+    @Transactional
+    public UserResponse registerAdmin(UserRegistrationRequest request) {
+        return createUserWithRole(request, Role.ADMIN);
+    }
+
+    public AuthResponse login(LoginRequest request) {
+        User user = userRepository.findByEmail(request.email())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid username or password"));
+
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            throw new IllegalArgumentException("Invalid username or password");
+        }
+
+        String token = jwtService.generateToken(user);
+        log.info("User {} logged in successfully", user.getEmail());
+
+        return new AuthResponse(token, "Bearer", 900000L);
+    }
+
+    @Transactional
+    public String upgradeToSeller(String userId) {
+        User user = userRepository.findById(UUID.fromString(userId))
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        if (user.getRole() == Role.SELLER || user.getRole() == Role.ADMIN) {
+            throw new IllegalStateException("User already possesses elevated privileges.");
+        }
+
+        user.setRole(Role.SELLER);
+        userRepository.save(user);
+
+        log.info("User {} upgraded to SELLER role", userId);
+
+        // The user will need to log in again to get a fresh JWT with the new role!
+        return "Successfully upgraded to SELLER. Please log in again to refresh your permissions.";
+    }
+
+    @Transactional(readOnly = true)
+    public UserResponse getUserProfile(String userId) {
+        User user = userRepository.findById(UUID.fromString(userId))
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        return mapToUserResponse(user);
+    }
+
+    private UserResponse createUserWithRole(UserRegistrationRequest request, Role role) {
         if (userRepository.existsByUsername(request.username())) {
             throw new IllegalArgumentException("Username is already taken");
         }
@@ -36,7 +82,6 @@ public class UserService {
             throw new IllegalArgumentException("Email is already registered");
         }
 
-        // map DTO to Entity and Hash Password
         User user = User.builder()
                 .username(request.username())
                 .email(request.email())
@@ -44,46 +89,29 @@ public class UserService {
                 .firstName(request.firstName())
                 .lastName(request.lastName())
                 .phoneNumber(request.phoneNumber())
-                .role(Role.BUYER)
+                .role(role)
                 .isActive(true)
-                .emailVerified(false)  // default to unverified, can be updated after email verification
+                .emailVerified(false)
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        // save to DB
         User savedUser = userRepository.save(user);
-        log.info("User registered successfully with ID: {}", savedUser.getId());
+        log.info("{} registered successfully with ID: {}", role, savedUser.getId());
 
-        // map Entity back to DTO
+        return mapToUserResponse(savedUser);
+    }
+
+    private UserResponse mapToUserResponse(User user) {
         return new UserResponse(
-                savedUser.getId(),
-                savedUser.getUsername(),
-                savedUser.getEmail(),
-                savedUser.getFirstName(),
-                savedUser.getLastName(),
-                savedUser.getRole(),
-                savedUser.isActive(),
-                savedUser.isEmailVerified(),
-                savedUser.getCreatedAt()
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getRole(),
+                user.isActive(),
+                user.isEmailVerified(),
+                user.getCreatedAt()
         );
     }
-
-    public AuthResponse login(LoginRequest request) {
-        // find user by username
-        User user = userRepository.findByEmail(request.email())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid username or password"));
-
-        // verify password mathematically
-        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-            throw new IllegalArgumentException("Invalid username or password");
-        }
-
-        // generate JWT
-        String token = jwtService.generateToken(user);
-
-        log.info("User {} logged in successfully", user.getEmail());
-
-        return new AuthResponse(token, "Bearer", 900000L);
-    }
-
 }
