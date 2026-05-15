@@ -143,12 +143,17 @@ public class OrderService {
     }
 
     public OrderResponse mapOrderToOrderResponse(Order order) {
+        BigDecimal calculatedTotal = order.getOrderLineItems().stream()
+                .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         return OrderResponse.builder()
                 .id(order.getId())
                 .orderNumber(order.getOrderNumber())
                 .userId(order.getUserId())
                 .orderLineItems(order.getOrderLineItems())
                 .createdAt(order.getCreatedAt())
+                .totalPrice(calculatedTotal)
                 .build();
     }
 }
