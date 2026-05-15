@@ -2,6 +2,7 @@ package com.shopsphere.userservice.controller;
 
 import com.shopsphere.userservice.dto.request.LoginRequest;
 import com.shopsphere.userservice.dto.request.UserRegistrationRequest;
+import com.shopsphere.userservice.dto.request.UserUpdateRequest;
 import com.shopsphere.userservice.dto.response.AuthResponse;
 import com.shopsphere.userservice.dto.response.UserResponse;
 import com.shopsphere.userservice.service.UserService;
@@ -41,12 +42,19 @@ public class UserController {
 
     @PostMapping("/admin/create")
     public ResponseEntity<UserResponse> createAdmin(@RequestHeader("X-User-Role") String role,
-            @Valid @RequestBody UserRegistrationRequest request) {
+                                                    @Valid @RequestBody UserRegistrationRequest request) {
 
         if (!"ADMIN".equals(role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(userService.registerAdmin(request));
+    }
+
+    @PutMapping("/profile")
+    public ResponseEntity<UserResponse> updateProfile(@RequestHeader("X-User-Id") String userId,
+                                                      @RequestBody UserUpdateRequest request) {
+
+        return ResponseEntity.ok(userService.updateUser(userId, request));
     }
 }

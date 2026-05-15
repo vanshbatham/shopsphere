@@ -2,6 +2,7 @@ package com.shopsphere.userservice.service;
 
 import com.shopsphere.userservice.dto.request.LoginRequest;
 import com.shopsphere.userservice.dto.request.UserRegistrationRequest;
+import com.shopsphere.userservice.dto.request.UserUpdateRequest;
 import com.shopsphere.userservice.dto.response.AuthResponse;
 import com.shopsphere.userservice.dto.response.UserResponse;
 import com.shopsphere.userservice.entity.Role;
@@ -72,6 +73,36 @@ public class UserService {
         User user = userRepository.findById(UUID.fromString(userId))
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
         return mapToUserResponse(user);
+    }
+
+    @Transactional
+    public UserResponse updateUser(String userId, UserUpdateRequest request) {
+        User user = userRepository.findById(UUID.fromString(userId))
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        if (request.firstName() != null && !request.firstName().trim().isEmpty()) {
+            user.setFirstName(request.firstName());
+        }
+
+        if (request.lastName() != null && !request.lastName().trim().isEmpty()) {
+            user.setLastName(request.lastName());
+        }
+
+        if (request.phoneNumber() != null && !request.phoneNumber().trim().isEmpty()) {
+            user.setPhoneNumber(request.phoneNumber());
+        }
+
+        if (request.email() != null && !request.email().trim().isEmpty()) {
+            if (userRepository.existsByEmail(request.email())) {
+                throw new IllegalArgumentException("Email is already registered");
+            }
+            user.setEmail(request.email());
+        }
+
+        User updatedUser = userRepository.save(user);
+        log.info("User {} successfully updated their profile details", userId);
+
+        return mapToUserResponse(updatedUser);
     }
 
     private UserResponse createUserWithRole(UserRegistrationRequest request, Role role) {
