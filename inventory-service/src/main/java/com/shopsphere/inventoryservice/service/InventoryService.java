@@ -10,6 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -105,5 +107,40 @@ public class InventoryService {
 
         inventoryRepository.save(inventory);
         log.info("Permanently deducted {} units for SKU: {}", request.quantity(), request.skuCode());
+    }
+
+    @Transactional
+    public void deductReservedStock(Map<String, Integer> skuQuantities) {
+        for (Map.Entry<String, Integer> entry : skuQuantities.entrySet()) {
+            String skuCode = entry.getKey();
+            Integer quantityToDeduct = entry.getValue();
+
+            Inventory inventory = inventoryRepository.findBySkuCode(skuCode)
+                    .orElseThrow(() -> new IllegalArgumentException("SKU not found: " + skuCode));
+
+            // Commit Phase: Simply remove it from reserved. It is gone forever.
+            inventory.setReservedQuantity(inventory.getReservedQuantity() - quantityToDeduct);
+            inventoryRepository.save(inventory);
+
+            log.info("Stock permanently deducted for SKU: {}, Quantity: {}", skuCode, quantityToDeduct);
+        }
+    }
+
+    @Transactional
+    public void releaseReservedStock(Map<String, Integer> skuQuantities) {
+        for (Map.Entry<String, Integer> entry : skuQuantities.entrySet()) {
+            String skuCode = entry.getKey();
+            Integer quantityToRelease = entry.getValue();
+
+            Inventory inventory = inventoryRepository.findBySkuCode(skuCode)
+                    .orElseThrow(() -> new IllegalArgumentException("SKU not found: " + skuCode));
+
+            // Compensating Phase: Remove from reserved, ADD back to available
+            inventory.setReservedQuantity(inventory.getReservedQuantity() - quantityToRelease);
+            inventory.setAvailableQuantity(inventory.getAvailableQuantity() + quantityToRelease);
+            inventoryRepository.save(inventory);
+
+            log.info("Stock released back to available for SKU: {}, Quantity: {}", skuCode, quantityToRelease);
+        }
     }
 }
