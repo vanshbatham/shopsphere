@@ -44,4 +44,16 @@ public class OrderController {
         }
         return ResponseEntity.ok(orderService.getAllOrders());
     }
+
+    @PutMapping("/{orderId}/pay")
+    public ResponseEntity<String> confirmPayment(@PathVariable String orderId) {
+        orderService.confirmOrderPayment(orderId);
+        return ResponseEntity.ok("Order payment confirmed. Inventory deduction triggered.");
+    }
+
+    @PutMapping("/{orderId}/cancel")
+    public ResponseEntity<String> cancelOrder(@PathVariable String orderId) {
+        orderService.cancelOrder(orderId);
+        return ResponseEntity.ok("Order cancelled. Inventory release triggered.");
+    }
 }

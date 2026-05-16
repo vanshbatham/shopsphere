@@ -3,6 +3,7 @@ package com.shopsphere.orderservice.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shopsphere.orderservice.client.CartClient;
 import com.shopsphere.orderservice.client.InventoryClient;
+import com.shopsphere.orderservice.dto.event.OrderStateEvent;
 import com.shopsphere.orderservice.dto.request.CartDto;
 import com.shopsphere.orderservice.dto.request.CartItemDto;
 import com.shopsphere.orderservice.dto.request.OrderPlacedEvent;
@@ -10,6 +11,7 @@ import com.shopsphere.orderservice.dto.response.OrderResponse;
 import com.shopsphere.orderservice.entity.Order;
 import com.shopsphere.orderservice.entity.OrderLineItem;
 import com.shopsphere.orderservice.enums.OrderStatus;
+import com.shopsphere.orderservice.publisher.OrderEventPublisher;
 import com.shopsphere.orderservice.repository.OrderRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -30,8 +34,9 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final InventoryClient inventoryClient;
-    private final CartClient cartClient; // NEW: Injected Cart Client
+    private final CartClient cartClient;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final OrderEventPublisher eventPublisher;
 
     @Transactional
     @CircuitBreaker(name = "inventoryService", fallbackMethod = "fallbackPlaceOrder")
@@ -117,6 +122,54 @@ public class OrderService {
             }
             throw new RuntimeException("Checkout failed, inventory released.");
         }
+    }
+
+    @Transactional
+    public void confirmOrderPayment(String orderId) {
+        Order order = orderRepository.findById(UUID.fromString(orderId))
+                .orElseThrow(() -> new IllegalArgumentException("Order not found"));
+
+        if (order.getStatus() != OrderStatus.PENDING) {
+            throw new IllegalStateException("Only PENDING orders can be paid");
+        }
+
+        // update database status
+        order.setStatus(OrderStatus.PAID);
+        orderRepository.save(order);
+
+        // build the fat event payload
+        Map<String, Integer> skuMap = order.getOrderLineItems().stream()
+                .collect(Collectors.toMap(
+                        OrderLineItem::getSkuCode,
+                        OrderLineItem::getQuantity
+                ));
+
+        // fire to Kafka (Commit phase of Saga)
+        eventPublisher.publishOrderPaidEvent(new OrderStateEvent(order.getOrderNumber(), skuMap));
+    }
+
+    @Transactional
+    public void cancelOrder(String orderId) {
+        Order order = orderRepository.findById(UUID.fromString(orderId))
+                .orElseThrow(() -> new IllegalArgumentException("Order not found"));
+
+        if (order.getStatus() != OrderStatus.PENDING) {
+            throw new IllegalStateException("Only PENDING orders can be cancelled");
+        }
+
+        // update Database Status
+        order.setStatus(OrderStatus.CANCELLED);
+        orderRepository.save(order);
+
+        // build the fat Event Payload
+        Map<String, Integer> skuMap = order.getOrderLineItems().stream()
+                .collect(Collectors.toMap(
+                        OrderLineItem::getSkuCode,
+                        OrderLineItem::getQuantity
+                ));
+
+        // fire to Kafka (Compensation Phase of Saga)
+        eventPublisher.publishOrderCancelledEvent(new OrderStateEvent(order.getOrderNumber(), skuMap));
     }
 
     // fallback method for Circuit Breaker
