@@ -11,6 +11,7 @@ import com.shopsphere.orderservice.dto.response.OrderResponse;
 import com.shopsphere.orderservice.entity.Order;
 import com.shopsphere.orderservice.entity.OrderLineItem;
 import com.shopsphere.orderservice.enums.OrderStatus;
+import com.shopsphere.orderservice.enums.PaymentStatus;
 import com.shopsphere.orderservice.publisher.OrderEventPublisher;
 import com.shopsphere.orderservice.repository.OrderRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
@@ -89,7 +90,8 @@ public class OrderService {
                     .build();
 
 
-            order.setStatus(OrderStatus.PENDING);
+            order.setOrderStatus(OrderStatus.PLACED);
+            order.setPaymentStatus(PaymentStatus.PENDING);
 
             orderRepository.save(order);
             log.info("Order {} placed successfully", order.getOrderNumber());
@@ -129,12 +131,13 @@ public class OrderService {
         Order order = orderRepository.findById(UUID.fromString(orderId))
                 .orElseThrow(() -> new IllegalArgumentException("Order not found"));
 
-        if (order.getStatus() != OrderStatus.PENDING) {
-            throw new IllegalStateException("Only PENDING orders can be paid");
+        if (order.getPaymentStatus() != PaymentStatus.PENDING) {
+            throw new IllegalStateException("Only PENDING payments can be confirmed");
         }
 
         // update database status
-        order.setStatus(OrderStatus.PAID);
+        order.setPaymentStatus(PaymentStatus.COMPLETED);
+        order.setOrderStatus(OrderStatus.PROCESSING);
         orderRepository.save(order);
 
         // build the fat event payload
@@ -153,12 +156,13 @@ public class OrderService {
         Order order = orderRepository.findById(UUID.fromString(orderId))
                 .orElseThrow(() -> new IllegalArgumentException("Order not found"));
 
-        if (order.getStatus() != OrderStatus.PENDING) {
-            throw new IllegalStateException("Only PENDING orders can be cancelled");
+        if (order.getOrderStatus() == OrderStatus.SHIPPED || order.getOrderStatus() == OrderStatus.DELIVERED) {
+            throw new IllegalStateException("Cannot cancel an order that has already shipped");
         }
 
         // update Database Status
-        order.setStatus(OrderStatus.CANCELLED);
+        order.setOrderStatus(OrderStatus.CANCELLED);
+        order.setPaymentStatus(PaymentStatus.FAILED);
         orderRepository.save(order);
 
         // build the fat Event Payload
@@ -211,7 +215,8 @@ public class OrderService {
                 .orderLineItems(order.getOrderLineItems())
                 .createdAt(order.getCreatedAt())
                 .totalPrice(calculatedTotal)
-                .status(order.getStatus())
+                .orderStatus(order.getOrderStatus())
+                .paymentStatus(order.getPaymentStatus())
                 .build();
     }
 }

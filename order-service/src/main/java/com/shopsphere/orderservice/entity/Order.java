@@ -1,6 +1,7 @@
 package com.shopsphere.orderservice.entity;
 
 import com.shopsphere.orderservice.enums.OrderStatus;
+import com.shopsphere.orderservice.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -29,7 +30,10 @@ public class Order {
     private List<OrderLineItem> orderLineItems;
 
     @Enumerated(EnumType.STRING)
-    private OrderStatus status;
+    private OrderStatus orderStatus;
+
+    @Enumerated(EnumType.STRING)
+    private PaymentStatus paymentStatus;
 
     @CreationTimestamp
     private LocalDateTime createdAt;
