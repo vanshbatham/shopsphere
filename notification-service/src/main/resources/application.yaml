@@ -2,13 +2,10 @@ server:
   port: 8085
 
 spring:
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      group-id: notificationId
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+  application:
+    name: notification-service
+  config:
+    import: optional:configserver:http://localhost:8888
 
   mail:
     host: localhost
@@ -21,18 +18,3 @@ spring:
           auth: false
           starttls:
             enable: false
-
-management:
-  tracing:
-    sampling:
-      probability: 1.0
-  zipkin:
-    tracing:
-      endpoint: http://localhost:9411/api/v2/spans
-
-eureka:
-  instance:
-    prefer-ip-address: true
-  client:
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
