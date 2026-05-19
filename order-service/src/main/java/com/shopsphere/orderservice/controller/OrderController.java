@@ -1,7 +1,9 @@
 package com.shopsphere.orderservice.controller;
 
+import com.shopsphere.orderservice.dto.request.OrderRequest;
 import com.shopsphere.orderservice.dto.response.OrderResponse;
 import com.shopsphere.orderservice.service.OrderService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,8 +20,13 @@ public class OrderController {
     private final OrderService orderService;
 
     @PostMapping
-    public ResponseEntity<String> placeOrder(@RequestHeader("X-User-Id") String userId) {
-        String response = orderService.placeOrder(userId);
+    public ResponseEntity<String> placeOrder(
+            @RequestHeader("X-User-Id") String userId,
+            @Valid @RequestBody OrderRequest orderRequest
+    ) {
+        // Pass the request body to your service so it can extract items and the PaymentMethod
+        String response = orderService.placeOrder(userId, orderRequest);
+
         if (response.contains("Oops!")) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(response);
         }

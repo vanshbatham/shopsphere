@@ -1,6 +1,7 @@
 package com.shopsphere.orderservice.entity;
 
 import com.shopsphere.orderservice.enums.OrderStatus;
+import com.shopsphere.orderservice.enums.PaymentMethod;
 import com.shopsphere.orderservice.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -34,6 +35,9 @@ public class Order {
 
     @Enumerated(EnumType.STRING)
     private PaymentStatus paymentStatus;
+
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod paymentMethod;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

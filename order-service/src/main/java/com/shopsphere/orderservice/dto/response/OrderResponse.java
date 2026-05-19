@@ -2,6 +2,7 @@ package com.shopsphere.orderservice.dto.response;
 
 import com.shopsphere.orderservice.entity.OrderLineItem;
 import com.shopsphere.orderservice.enums.OrderStatus;
+import com.shopsphere.orderservice.enums.PaymentMethod;
 import com.shopsphere.orderservice.enums.PaymentStatus;
 import lombok.*;
 
@@ -24,5 +25,5 @@ public class OrderResponse {
     private LocalDateTime createdAt;
     private OrderStatus orderStatus;
     private PaymentStatus paymentStatus;
+    private PaymentMethod paymentMethod;
 }
-

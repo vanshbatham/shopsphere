@@ -7,10 +7,12 @@ import com.shopsphere.orderservice.dto.event.OrderStateEvent;
 import com.shopsphere.orderservice.dto.request.CartDto;
 import com.shopsphere.orderservice.dto.request.CartItemDto;
 import com.shopsphere.orderservice.dto.request.OrderPlacedEvent;
+import com.shopsphere.orderservice.dto.request.OrderRequest;
 import com.shopsphere.orderservice.dto.response.OrderResponse;
 import com.shopsphere.orderservice.entity.Order;
 import com.shopsphere.orderservice.entity.OrderLineItem;
 import com.shopsphere.orderservice.enums.OrderStatus;
+import com.shopsphere.orderservice.enums.PaymentMethod;
 import com.shopsphere.orderservice.enums.PaymentStatus;
 import com.shopsphere.orderservice.publisher.OrderEventPublisher;
 import com.shopsphere.orderservice.repository.OrderRepository;
@@ -41,11 +43,12 @@ public class OrderService {
 
     @Transactional
     @CircuitBreaker(name = "inventoryService", fallbackMethod = "fallbackPlaceOrder")
-    public String placeOrder(String userId) {
+    public String placeOrder(String userId, OrderRequest orderRequest) {
 
-        log.info("Initiating checkout orchestration for user: {}", userId);
+        log.info("Initiating checkout orchestration for user: {} with payment method: {}",
+                userId, orderRequest.paymentMethod());
 
-        // 1. GET THE SECURE CART
+        // 1. GET THE SECURE CART (Source of Truth for Prices)
         CartDto cart = cartClient.getCart(userId);
         if (cart == null || cart.items() == null || cart.items().isEmpty()) {
             throw new IllegalArgumentException("Cannot place order: Cart is empty.");
@@ -72,7 +75,6 @@ public class OrderService {
                     item.getSkuCode(), item.getQuantity());
             log.info("Calling Inventory Service to reserve {} units of {}", item.getQuantity(), item.getSkuCode());
 
-            // This call is protected by the Circuit Breaker
             Boolean isReserved = inventoryClient.reserveStock(inventoryRequest);
 
             if (Boolean.FALSE.equals(isReserved)) {
@@ -81,17 +83,25 @@ public class OrderService {
             }
         }
 
-        // 4. THE TRANSACTION BLOCK (Save Order and Publish Events)
+        // 4. THE TRANSACTION BLOCK
         try {
             Order order = Order.builder()
                     .orderNumber(UUID.randomUUID().toString())
                     .userId(userId)
                     .orderLineItems(orderLineItems)
+                    .paymentMethod(orderRequest.paymentMethod()) // Set the requested payment method
                     .build();
 
+            // --- THE ROUTING LOGIC ---
+            order.setPaymentStatus(PaymentStatus.PENDING); // All new orders start with PENDING money
 
-            order.setOrderStatus(OrderStatus.PLACED);
-            order.setPaymentStatus(PaymentStatus.PENDING);
+            if (order.getPaymentMethod() == PaymentMethod.COD) {
+                log.info("COD order detected. Fast-tracking to PROCESSING state.");
+                order.setOrderStatus(OrderStatus.PROCESSING);
+            } else {
+                log.info("Digital payment detected. Setting to PLACED state. Waiting for payment confirmation.");
+                order.setOrderStatus(OrderStatus.PLACED);
+            }
 
             orderRepository.save(order);
             log.info("Order {} placed successfully", order.getOrderNumber());
@@ -99,9 +109,8 @@ public class OrderService {
             // Notification Event
             String message = String.format("Order Placed Successfully! Order Number: %s, User ID: %s", order.getOrderNumber(), userId);
             kafkaTemplate.send("notificationTopic", message);
-            log.info("Notification event sent to Kafka topic");
 
-            // Payment Event (Using the mathematically calculated total)
+            // Payment Event
             OrderPlacedEvent event = new OrderPlacedEvent(order.getOrderNumber(), userId, totalAmount);
             ObjectMapper objectMapper = new ObjectMapper();
             String jsonMessage = objectMapper.writeValueAsString(event);
@@ -135,19 +144,16 @@ public class OrderService {
             throw new IllegalStateException("Only PENDING payments can be confirmed");
         }
 
-        // update database status
         order.setPaymentStatus(PaymentStatus.COMPLETED);
         order.setOrderStatus(OrderStatus.PROCESSING);
         orderRepository.save(order);
 
-        // build the fat event payload
         Map<String, Integer> skuMap = order.getOrderLineItems().stream()
                 .collect(Collectors.toMap(
                         OrderLineItem::getSkuCode,
                         OrderLineItem::getQuantity
                 ));
 
-        // fire to Kafka (Commit phase of Saga)
         eventPublisher.publishOrderPaidEvent(new OrderStateEvent(order.getOrderNumber(), skuMap));
     }
 
@@ -160,24 +166,21 @@ public class OrderService {
             throw new IllegalStateException("Cannot cancel an order that has already shipped");
         }
 
-        // update Database Status
         order.setOrderStatus(OrderStatus.CANCELLED);
         order.setPaymentStatus(PaymentStatus.FAILED);
         orderRepository.save(order);
 
-        // build the fat Event Payload
         Map<String, Integer> skuMap = order.getOrderLineItems().stream()
                 .collect(Collectors.toMap(
                         OrderLineItem::getSkuCode,
                         OrderLineItem::getQuantity
                 ));
 
-        // fire to Kafka (Compensation Phase of Saga)
         eventPublisher.publishOrderCancelledEvent(new OrderStateEvent(order.getOrderNumber(), skuMap));
     }
 
     // fallback method for Circuit Breaker
-    public String fallbackPlaceOrder(String userId, Exception e) {
+    public String fallbackPlaceOrder(String userId, OrderRequest orderRequest, Exception e) {
         log.error("Circuit Breaker triggered! Fallback active. Error: {}", e.getMessage());
         return "Oops! Our checkout system is currently busy or down. Your order cannot be placed right now. Please try again in a few moments.";
     }
@@ -217,6 +220,7 @@ public class OrderService {
                 .totalPrice(calculatedTotal)
                 .orderStatus(order.getOrderStatus())
                 .paymentStatus(order.getPaymentStatus())
+                .paymentMethod(order.getPaymentMethod())
                 .build();
     }
 }
