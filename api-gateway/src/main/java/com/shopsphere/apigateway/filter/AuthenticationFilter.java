@@ -23,8 +23,12 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
     public GatewayFilter apply(Config config) {
         return ((exchange, chain) -> {
             ServerHttpRequest request = exchange.getRequest();
+            String path = request.getURI().getPath();
 
-            // check if the Authorization header exists
+            if (path.contains("/v3/api-docs") || path.contains("/swagger-ui")) {
+                return chain.filter(exchange);
+            }
+            
             if (!request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
                 exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
                 return exchange.getResponse().setComplete();
