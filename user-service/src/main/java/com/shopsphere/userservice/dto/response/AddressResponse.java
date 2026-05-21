@@ -1,7 +1,9 @@
 package com.shopsphere.userservice.dto.response;
 
+import java.util.UUID;
+
 public record AddressResponse(
-        Long id,
+        UUID id,
         String street,
         String city,
         String state,

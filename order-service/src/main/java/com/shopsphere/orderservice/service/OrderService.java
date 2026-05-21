@@ -107,7 +107,7 @@ public class OrderService {
                     .orderNumber(UUID.randomUUID().toString())
                     .userId(userId)
                     .orderLineItems(orderLineItems)
-                    .paymentMethod(orderRequest.paymentMethod()) // Set the requested payment method
+                    .paymentMethod(PaymentMethod.valueOf(orderRequest.paymentMethod())) // Set the requested payment method
                     .shippingAddress(snapshotAddress)
                     .build();
 

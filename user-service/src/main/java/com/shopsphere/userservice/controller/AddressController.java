@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/users/addresses")
@@ -54,7 +55,7 @@ public class AddressController {
     @GetMapping("/{addressId}")
     public ResponseEntity<AddressResponse> getAddressById(
             @RequestHeader("X-User-Id") String userId,
-            @PathVariable Long addressId) {
+            @PathVariable UUID addressId) {
         return ResponseEntity.ok(addressService.getAddressById(addressId, userId));
     }
 }

@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -37,7 +38,7 @@ public class AddressService {
                 .toList();
     }
 
-    public AddressResponse getAddressById(Long addressId, String userId) {
+    public AddressResponse getAddressById(UUID addressId, String userId) {
         Address address = addressRepository.findByIdAndUserId(addressId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Address not found or does not belong to user"));
         return mapToResponse(address);

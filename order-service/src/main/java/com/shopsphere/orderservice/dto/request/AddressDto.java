@@ -1,7 +1,9 @@
 package com.shopsphere.orderservice.dto.request;
 
+import java.util.UUID;
+
 public record AddressDto(
-        Long id,
+        UUID id,
         String street,
         String city,
         String state,
