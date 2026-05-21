@@ -39,6 +39,9 @@ public class Order {
     @Enumerated(EnumType.STRING)
     private PaymentMethod paymentMethod;
 
+    @Embedded
+    private ShippingAddress shippingAddress;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 }

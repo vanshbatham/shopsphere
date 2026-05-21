@@ -12,7 +12,10 @@ public record OrderRequest(
         List<OrderLineItemDto> orderLineItems,
 
         @NotNull(message = "Payment method is required")
-        PaymentMethod paymentMethod
+        PaymentMethod paymentMethod,
+
+        @NotNull(message = "Address ID is required to ship the order")
+        Long addressId
 ) {
     public record OrderLineItemDto(
             @NotNull(message = "SKU code is required")

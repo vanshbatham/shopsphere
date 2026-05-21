@@ -3,14 +3,13 @@ package com.shopsphere.orderservice.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shopsphere.orderservice.client.CartClient;
 import com.shopsphere.orderservice.client.InventoryClient;
+import com.shopsphere.orderservice.client.UserClient;
 import com.shopsphere.orderservice.dto.event.OrderStateEvent;
-import com.shopsphere.orderservice.dto.request.CartDto;
-import com.shopsphere.orderservice.dto.request.CartItemDto;
-import com.shopsphere.orderservice.dto.request.OrderPlacedEvent;
-import com.shopsphere.orderservice.dto.request.OrderRequest;
+import com.shopsphere.orderservice.dto.request.*;
 import com.shopsphere.orderservice.dto.response.OrderResponse;
 import com.shopsphere.orderservice.entity.Order;
 import com.shopsphere.orderservice.entity.OrderLineItem;
+import com.shopsphere.orderservice.entity.ShippingAddress;
 import com.shopsphere.orderservice.enums.OrderStatus;
 import com.shopsphere.orderservice.enums.PaymentMethod;
 import com.shopsphere.orderservice.enums.PaymentStatus;
@@ -40,6 +39,7 @@ public class OrderService {
     private final CartClient cartClient;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final OrderEventPublisher eventPublisher;
+    private final UserClient userClient;
 
     @Transactional
     @CircuitBreaker(name = "inventoryService", fallbackMethod = "fallbackPlaceOrder")
@@ -69,7 +69,25 @@ public class OrderService {
             totalAmount = totalAmount.add(itemTotal);
         }
 
-        // 3. HARD INVENTORY CHECK (Synchronous Network Call)
+        // 3. FETCH ADDRESS SNAPSHOT
+        AddressDto addressDto;
+        try {
+            log.info("Fetching address snapshot for Address ID: {}", orderRequest.addressId());
+            addressDto = userClient.getAddressById(userId, orderRequest.addressId());
+        } catch (Exception e) {
+            log.error("Failed to retrieve address from User Service", e);
+            throw new IllegalArgumentException("Invalid Address Selected.");
+        }
+
+        ShippingAddress snapshotAddress = ShippingAddress.builder()
+                .street(addressDto.street())
+                .city(addressDto.city())
+                .state(addressDto.state())
+                .zipCode(addressDto.zipCode())
+                .country(addressDto.country())
+                .build();
+
+        // 4. HARD INVENTORY CHECK (Synchronous Network Call)
         for (OrderLineItem item : orderLineItems) {
             InventoryClient.InventoryRequest inventoryRequest = new InventoryClient.InventoryRequest(
                     item.getSkuCode(), item.getQuantity());
@@ -83,13 +101,14 @@ public class OrderService {
             }
         }
 
-        // 4. THE TRANSACTION BLOCK
+        // 5. THE TRANSACTION BLOCK
         try {
             Order order = Order.builder()
                     .orderNumber(UUID.randomUUID().toString())
                     .userId(userId)
                     .orderLineItems(orderLineItems)
                     .paymentMethod(orderRequest.paymentMethod()) // Set the requested payment method
+                    .shippingAddress(snapshotAddress)
                     .build();
 
             // --- THE ROUTING LOGIC ---
@@ -118,7 +137,7 @@ public class OrderService {
             kafkaTemplate.send("order-events-topic", jsonMessage);
             log.info("OrderPlacedEvent dispatched to Kafka for Order Number: {}", order.getOrderNumber());
 
-            // 5. CLEAR THE CART
+            // 6. CLEAR THE CART
             cartClient.clearCart(userId);
             log.info("Cart cleared for user: {}", userId);
 
@@ -221,6 +240,7 @@ public class OrderService {
                 .orderStatus(order.getOrderStatus())
                 .paymentStatus(order.getPaymentStatus())
                 .paymentMethod(order.getPaymentMethod())
+                .shippingAddress(order.getShippingAddress())
                 .build();
     }
 }
