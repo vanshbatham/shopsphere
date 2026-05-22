@@ -99,4 +99,13 @@ public class OrderController {
         orderService.cancelOrder(orderId);
         return ResponseEntity.ok("Order cancelled. Inventory release triggered.");
     }
+
+    @Operation(summary = "Internal Verification: Verify user purchase", description = "Checks if the user has a finalized historical record purchasing this product.")
+    @GetMapping("/internal/verify-purchase")
+    public ResponseEntity<Boolean> verifyUserPurchase(@RequestParam("userId") String userId,
+                                                      @RequestParam("productId") String productId) {
+        // business logic for checking historical order states
+        boolean hasPurchased = orderService.checkPurchaseHistory(userId, productId);
+        return ResponseEntity.ok(hasPurchased);
+    }
 }

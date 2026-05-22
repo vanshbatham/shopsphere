@@ -86,7 +86,7 @@ services:
     restart: unless-stopped
 
   postgres-review:
-    image: postgres:16-alpine
+    image: postgres:15-alpine
     container_name: shopsphere-postgres-review
     environment:
       POSTGRES_USER: vansh
@@ -95,7 +95,7 @@ services:
     ports:
       - "5437:5432"
     volumes:
-      - review_db_data:/var/lib/postgresql/data
+      - postgres-review-data:/var/lib/postgresql/data
     restart: unless-stopped
 
 
@@ -127,4 +127,4 @@ volumes:
   postgres-inventory-data:
   postgres-order-data:
   postgres-payment-data:
-  review_db_data:
+  postgres-review-data:

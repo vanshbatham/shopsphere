@@ -5,11 +5,9 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
-import java.util.UUID;
-
 public record ReviewRequest(
         @NotNull(message = "Product ID cannot be null")
-        UUID productId,
+        String productId,
 
         @NotNull(message = "Rating value is mandatory")
         @Min(value = 1, message = "Rating must be at least 1 star")

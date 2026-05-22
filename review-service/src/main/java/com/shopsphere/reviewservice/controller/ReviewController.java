@@ -12,7 +12,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/reviews")
@@ -31,7 +30,7 @@ public class ReviewController {
 
     @GetMapping("/product/{productId}")
     @Operation(summary = "Retrieve reviews by Product ID", description = "Exposes a public unauthenticated array of all relevant ratings.")
-    public ResponseEntity<List<ReviewResponse>> fetchReviewsByProduct(@PathVariable UUID productId) {
+    public ResponseEntity<List<ReviewResponse>> fetchReviewsByProduct(@PathVariable String productId) {
         return ResponseEntity.ok(reviewService.getProductReviews(productId));
     }
 }

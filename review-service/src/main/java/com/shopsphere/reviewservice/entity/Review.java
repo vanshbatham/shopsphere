@@ -25,7 +25,7 @@ public class Review {
     private UUID id;
 
     @Column(nullable = false)
-    private UUID productId;
+    private String productId;
 
     @Column(nullable = false, updatable = false)
     private String userId;

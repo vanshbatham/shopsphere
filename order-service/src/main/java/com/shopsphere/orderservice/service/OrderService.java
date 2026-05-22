@@ -225,6 +225,22 @@ public class OrderService {
         return mapOrderToOrderResponse(order);
     }
 
+    @Transactional(readOnly = true)
+    public boolean checkPurchaseHistory(String userId, String skuCode) {
+        log.info("Verifying strict purchase history for User: {} and SKU: {}", userId, skuCode);
+
+        //optimized database query
+        boolean isVerified = orderRepository.existsVerifiedPurchase(userId, skuCode);
+
+        if (isVerified) {
+            log.info("Verification successful. User {} is a verified buyer of {}", userId, skuCode);
+        } else {
+            log.warn("Verification failed. User {} does not have a COMPLETED/DELIVERED order for {}", userId, skuCode);
+        }
+
+        return isVerified;
+    }
+
     public OrderResponse mapOrderToOrderResponse(Order order) {
         BigDecimal calculatedTotal = order.getOrderLineItems().stream()
                 .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))

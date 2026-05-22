@@ -1,5 +1,6 @@
 package com.shopsphere.reviewservice.service;
 
+import com.shopsphere.reviewservice.client.OrderClient;
 import com.shopsphere.reviewservice.dto.request.ReviewRequest;
 import com.shopsphere.reviewservice.dto.response.ReviewResponse;
 import com.shopsphere.reviewservice.entity.Review;
@@ -10,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -18,14 +18,29 @@ import java.util.UUID;
 public class ReviewService {
 
     private final ReviewRepository reviewRepository;
+    private final OrderClient orderClient;
 
     @Transactional
     public ReviewResponse createReview(String userId, ReviewRequest request) {
-        log.info("Processing incoming review submission from User: {} for Product: {}", userId, request.productId());
+        log.info("Initiating verification for review from User: {} on Product: {}", userId, request.productId());
 
+        // 1. DUPLICATE CHECK
         if (reviewRepository.existsByProductIdAndUserId(request.productId(), userId)) {
-            log.warn("Rejection triggered: User {} has already reviewed product {}", userId, request.productId());
             throw new IllegalStateException("Duplicate entry: You have already submitted a review for this product.");
+        }
+
+        // 2. SYNCHRONOUS VERIFIED BUYER CHECK
+        Boolean isVerifiedBuyer;
+        try {
+            isVerifiedBuyer = orderClient.verifyUserPurchase(userId, request.productId());
+        } catch (Exception e) {
+            log.error("Network communication failure to order-service via Feign Client", e);
+            throw new IllegalStateException("Verification temporary unavailable. Please try again later.");
+        }
+
+        if (Boolean.FALSE.equals(isVerifiedBuyer)) {
+            log.warn("Security Alert: User {} attempted to review unpurchased product {}", userId, request.productId());
+            throw new SecurityException("Access Denied: You can only review products you have officially purchased.");
         }
 
         Review review = Review.builder()
@@ -39,8 +54,9 @@ public class ReviewService {
         return mapToResponse(savedEntity);
     }
 
+
     @Transactional(readOnly = true)
-    public List<ReviewResponse> getProductReviews(UUID productId) {
+    public List<ReviewResponse> getProductReviews(String productId) {
         log.info("Fetching all consolidated reviews for Product: {}", productId);
         return reviewRepository.findByProductIdOrderByCreatedAtDesc(productId)
                 .stream()
