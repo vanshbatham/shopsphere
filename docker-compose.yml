@@ -85,6 +85,20 @@ services:
       - postgres-payment-data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  postgres-review:
+    image: postgres:16-alpine
+    container_name: shopsphere-postgres-review
+    environment:
+      POSTGRES_USER: vansh
+      POSTGRES_PASSWORD: vansh@postgres
+      POSTGRES_DB: review_service_db
+    ports:
+      - "5437:5432"
+    volumes:
+      - review_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+
 
 
   redis:
@@ -113,3 +127,4 @@ volumes:
   postgres-inventory-data:
   postgres-order-data:
   postgres-payment-data:
+  review_db_data:
