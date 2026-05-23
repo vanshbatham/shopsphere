@@ -13,6 +13,8 @@ import com.shopsphere.orderservice.entity.ShippingAddress;
 import com.shopsphere.orderservice.enums.OrderStatus;
 import com.shopsphere.orderservice.enums.PaymentMethod;
 import com.shopsphere.orderservice.enums.PaymentStatus;
+import com.shopsphere.orderservice.exception.BadRequestException;
+import com.shopsphere.orderservice.exception.ResourceNotFoundException;
 import com.shopsphere.orderservice.publisher.OrderEventPublisher;
 import com.shopsphere.orderservice.repository.OrderRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
@@ -51,7 +53,7 @@ public class OrderService {
         // 1. GET THE SECURE CART (Source of Truth for Prices)
         CartDto cart = cartClient.getCart(userId);
         if (cart == null || cart.items() == null || cart.items().isEmpty()) {
-            throw new IllegalArgumentException("Cannot place order: Cart is empty.");
+            throw new BadRequestException("Cannot place order: Cart is empty.");
         }
 
         List<OrderLineItem> orderLineItems = new ArrayList<>();
@@ -76,7 +78,7 @@ public class OrderService {
             addressDto = userClient.getAddressById(userId, orderRequest.addressId());
         } catch (Exception e) {
             log.error("Failed to retrieve address from User Service", e);
-            throw new IllegalArgumentException("Invalid Address Selected.");
+            throw new BadRequestException("Invalid Address Selected.");
         }
 
         ShippingAddress snapshotAddress = ShippingAddress.builder()
@@ -97,7 +99,7 @@ public class OrderService {
 
             if (Boolean.FALSE.equals(isReserved)) {
                 log.error("Insufficient stock for SKU: {}", item.getSkuCode());
-                throw new IllegalArgumentException("Insufficient stock for item: " + item.getSkuCode());
+                throw new BadRequestException("Insufficient stock for item: " + item.getSkuCode());
             }
         }
 
@@ -157,10 +159,10 @@ public class OrderService {
     @Transactional
     public void confirmOrderPayment(String orderId) {
         Order order = orderRepository.findById(UUID.fromString(orderId))
-                .orElseThrow(() -> new IllegalArgumentException("Order not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
         if (order.getPaymentStatus() != PaymentStatus.PENDING) {
-            throw new IllegalStateException("Only PENDING payments can be confirmed");
+            throw new BadRequestException("Only PENDING payments can be confirmed");
         }
 
         order.setPaymentStatus(PaymentStatus.COMPLETED);
@@ -179,10 +181,10 @@ public class OrderService {
     @Transactional
     public void cancelOrder(String orderId) {
         Order order = orderRepository.findById(UUID.fromString(orderId))
-                .orElseThrow(() -> new IllegalArgumentException("Order not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
         if (order.getOrderStatus() == OrderStatus.SHIPPED || order.getOrderStatus() == OrderStatus.DELIVERED) {
-            throw new IllegalStateException("Cannot cancel an order that has already shipped");
+            throw new BadRequestException("Cannot cancel an order that has already shipped");
         }
 
         order.setOrderStatus(OrderStatus.CANCELLED);
@@ -221,7 +223,7 @@ public class OrderService {
     @Transactional(readOnly = true)
     public OrderResponse getOrderById(UUID orderId) {
         Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new IllegalArgumentException("Order not found with ID: " + orderId));
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with ID: " + orderId));
         return mapOrderToOrderResponse(order);
     }
 

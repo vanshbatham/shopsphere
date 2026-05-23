@@ -1,7 +1,8 @@
-package com.shopsphere.reviewservice.exception;
+package com.shopsphere.couponservice.exception;
 
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.NonNull;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -34,7 +35,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
                 .collect(Collectors.joining(", "));
 
-        log.warn("Validation failed: {}", errors); // <-- Log it!
+        log.warn("Validation failed: {}", errors);
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
@@ -57,14 +58,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse(409, "Conflict", ex.getMessage()));
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    public ResponseEntity<ErrorResponse> handleSecurityException(SecurityException ex) {
-        log.warn("Security exception: {}", ex.getMessage());
-        return ResponseEntity
-                .status(HttpStatus.FORBIDDEN)
-                .body(new ErrorResponse(403, "Forbidden", ex.getMessage()));
     }
 
     // 400 - Bad request

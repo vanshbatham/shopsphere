@@ -4,6 +4,8 @@ import com.shopsphere.inventoryservice.client.ProductClient;
 import com.shopsphere.inventoryservice.dto.request.InventoryRequest;
 import com.shopsphere.inventoryservice.dto.response.InventoryResponse;
 import com.shopsphere.inventoryservice.entity.Inventory;
+import com.shopsphere.inventoryservice.exception.BadRequestException;
+import com.shopsphere.inventoryservice.exception.ResourceNotFoundException;
 import com.shopsphere.inventoryservice.repository.InventoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +32,7 @@ public class InventoryService {
 
         if (Boolean.FALSE.equals(productExists)) {
             log.error("Failed to add inventory: SKU {} does not exist in Product Catalog", skuCode);
-            throw new IllegalArgumentException("Cannot add inventory for a non-existent product SKU: " + skuCode);
+            throw new BadRequestException("Cannot add inventory for a non-existent product SKU: " + skuCode);
         }
 
         // proceed with normal Inventory saving logic...
@@ -63,7 +65,7 @@ public class InventoryService {
 
         // acquire database Lock
         Inventory inventory = inventoryRepository.findBySkuCodeForUpdate(request.skuCode())
-                .orElseThrow(() -> new IllegalArgumentException("SKU not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("SKU not found"));
 
         // validate availability
         if (inventory.getAvailableQuantity() < request.quantity()) {
@@ -85,7 +87,7 @@ public class InventoryService {
     @Transactional
     public void releaseStock(InventoryRequest request) {
         Inventory inventory = inventoryRepository.findBySkuCodeForUpdate(request.skuCode())
-                .orElseThrow(() -> new IllegalArgumentException("SKU not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("SKU not found"));
 
         // move from reserved back to Available (Payment Failed/Cart Abandoned)
         inventory.setReservedQuantity(inventory.getReservedQuantity() - request.quantity());
@@ -99,7 +101,7 @@ public class InventoryService {
     @Transactional
     public void deductStock(InventoryRequest request) {
         Inventory inventory = inventoryRepository.findBySkuCodeForUpdate(request.skuCode())
-                .orElseThrow(() -> new IllegalArgumentException("SKU not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("SKU not found"));
 
         // permanently remove from reserved (Payment Succeeded)
         inventory.setReservedQuantity(inventory.getReservedQuantity() - request.quantity());
@@ -116,7 +118,7 @@ public class InventoryService {
             Integer quantityToDeduct = entry.getValue();
 
             Inventory inventory = inventoryRepository.findBySkuCode(skuCode)
-                    .orElseThrow(() -> new IllegalArgumentException("SKU not found: " + skuCode));
+                    .orElseThrow(() -> new ResourceNotFoundException("SKU not found: " + skuCode));
 
             // Commit Phase: Simply remove it from reserved. It is gone forever.
             inventory.setReservedQuantity(inventory.getReservedQuantity() - quantityToDeduct);
@@ -133,7 +135,7 @@ public class InventoryService {
             Integer quantityToRelease = entry.getValue();
 
             Inventory inventory = inventoryRepository.findBySkuCode(skuCode)
-                    .orElseThrow(() -> new IllegalArgumentException("SKU not found: " + skuCode));
+                    .orElseThrow(() -> new ResourceNotFoundException("SKU not found: " + skuCode));
 
             // Compensating Phase: Remove from reserved, ADD back to available
             inventory.setReservedQuantity(inventory.getReservedQuantity() - quantityToRelease);

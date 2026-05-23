@@ -7,6 +7,7 @@ import com.shopsphere.paymentservice.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,7 +56,7 @@ public class PaymentService {
         log.info("Webhook received from Payment Gateway for Order ID: {}", orderId);
 
         Payment payment = paymentRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new IllegalArgumentException("Webhook received for unknown Order ID: " + orderId));
+                .orElseThrow(() -> new BadCredentialsException("Webhook received for unknown Order ID: " + orderId));
 
         if (payment.getStatus() == PaymentStatus.COMPLETED) {
             log.info("Payment already marked as COMPLETED. Ignoring duplicate Webhook.");

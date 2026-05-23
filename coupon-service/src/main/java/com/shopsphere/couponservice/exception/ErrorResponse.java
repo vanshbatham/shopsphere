@@ -1,4 +1,4 @@
-package com.shopsphere.reviewservice.exception;
+package com.shopsphere.couponservice.exception;
 
 import lombok.Getter;
 import lombok.Setter;

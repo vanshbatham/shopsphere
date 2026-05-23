@@ -1,67 +1,101 @@
 package com.shopsphere.cartservice.exception;
 
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.FieldError;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.stream.Collectors;
 
-@RestControllerAdvice
 @Slf4j
-public class GlobalExceptionHandler {
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException ex, HttpServletRequest request) {
-        log.warn("Business logic exception: {}", ex.getMessage());
+@RestControllerAdvice
+public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
-        ErrorResponse error = new ErrorResponse(
-                LocalDateTime.now(),
-                HttpStatus.BAD_REQUEST.value(),
-                HttpStatus.BAD_REQUEST.getReasonPhrase(),
-                ex.getMessage(),
-                request.getRequestURI()
-        );
-        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    // 400 - Validation failures
+    @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(
+            MethodArgumentNotValidException ex,
+            @NonNull HttpHeaders headers,
+            @NonNull HttpStatusCode status,
+            @NonNull WebRequest request) {
+
+        String errors = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+                .collect(Collectors.joining(", "));
+
+        log.warn("Validation failed: {}", errors);
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(400, "Validation Failed", errors));
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationExceptions(MethodArgumentNotValidException ex, HttpServletRequest request) {
-        Map<String, String> errors = new HashMap<>();
-
-        ex.getBindingResult().getAllErrors().forEach((error) -> {
-            String fieldName = ((FieldError) error).getField();
-            String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
-        });
-
-        log.warn("Payload validation failed: {}", errors);
-
-        ErrorResponse errorResponse = new ErrorResponse(
-                LocalDateTime.now(),
-                HttpStatus.BAD_REQUEST.value(),
-                "Validation Failed",
-                errors.toString(), // Returns the map of fields that failed
-                request.getRequestURI()
-        );
-        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    // 404 - Resource not found
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleResourceNotFound(ResourceNotFoundException ex) {
+        log.warn("Resource not found: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse(404, "Not Found", ex.getMessage()));
     }
 
+    // 409 - Duplicate resource
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateResource(DuplicateResourceException ex) {
+        log.warn("Duplicate resource conflict: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(409, "Conflict", ex.getMessage()));
+    }
+
+    // 400 - Bad request
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ErrorResponse> handleBadRequest(BadRequestException ex) {
+        log.warn("Bad request processed: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(400, "Bad Request", ex.getMessage()));
+    }
+
+    // 401 - Bad credentials
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleBadCredentials(BadCredentialsException ex) {
+        log.warn("Failed login attempt: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(new ErrorResponse(401, "Unauthorized", "Invalid username or password"));
+    }
+
+    // 403 - Access denied
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {
+        log.warn("Access denied for current user context.");
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse(403, "Forbidden", "You don't have permission to access this resource"));
+    }
+
+    // 500 - Catch-all
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGlobalException(Exception ex, HttpServletRequest request) {
-        log.error("Unhandled exception occurred: ", ex);
-        ErrorResponse error = new ErrorResponse(
-                LocalDateTime.now(),
-                HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
-                "An unexpected error occurred. Please try again later.",
-                request.getRequestURI()
-        );
-        return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+    public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
+        log.error("Unhandled system exception caught: ", ex);
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse(
+                        500,
+                        "Internal Server Error",
+                        "An unexpected error occurred. Please contact support."
+                ));
     }
 }

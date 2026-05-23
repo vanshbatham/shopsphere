@@ -4,6 +4,7 @@ import com.shopsphere.productservice.dto.request.ProductRequest;
 import com.shopsphere.productservice.dto.response.ProductResponse;
 import com.shopsphere.productservice.entity.Category;
 import com.shopsphere.productservice.entity.Product;
+import com.shopsphere.productservice.exception.ResourceNotFoundException;
 import com.shopsphere.productservice.repository.CategoryRepository;
 import com.shopsphere.productservice.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +38,7 @@ public class ProductService {
     @Transactional
     public ProductResponse createProduct(ProductRequest request, String categoryId) {
         Category category = categoryRepository.findById(categoryId)
-                .orElseThrow(() -> new IllegalArgumentException("Category not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Category not found"));
 
         Product product = Product.builder()
                 .name(request.name())
@@ -87,7 +88,7 @@ public class ProductService {
     @Transactional(readOnly = true)
     public ProductResponse getProductById(String productId) {
         Product product = productRepository.findById(UUID.fromString(productId))
-                .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
         return mapToProductResponse(product);
     }
 
@@ -99,7 +100,7 @@ public class ProductService {
     @Transactional(readOnly = true)
     public ProductResponse getProductBySkuCode(String skuCode) {
         Product product = productRepository.findBySkuCode(skuCode)
-                .orElseThrow(() -> new IllegalArgumentException("Product not found with SKU: " + skuCode));
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found with SKU: " + skuCode));
         return mapToProductResponse(product);
     }
 

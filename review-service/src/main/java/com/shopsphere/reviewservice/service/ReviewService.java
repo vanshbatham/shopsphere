@@ -4,6 +4,8 @@ import com.shopsphere.reviewservice.client.OrderClient;
 import com.shopsphere.reviewservice.dto.request.ReviewRequest;
 import com.shopsphere.reviewservice.dto.response.ReviewResponse;
 import com.shopsphere.reviewservice.entity.Review;
+import com.shopsphere.reviewservice.exception.DuplicateResourceException;
+import com.shopsphere.reviewservice.exception.ResourceNotFoundException;
 import com.shopsphere.reviewservice.repository.ReviewRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +28,7 @@ public class ReviewService {
 
         // 1. DUPLICATE CHECK
         if (reviewRepository.existsByProductIdAndUserId(request.productId(), userId)) {
-            throw new IllegalStateException("Duplicate entry: You have already submitted a review for this product.");
+            throw new DuplicateResourceException("Duplicate entry: You have already submitted a review for this product.");
         }
 
         // 2. SYNCHRONOUS VERIFIED BUYER CHECK
@@ -35,7 +37,7 @@ public class ReviewService {
             isVerifiedBuyer = orderClient.verifyUserPurchase(userId, request.productId());
         } catch (Exception e) {
             log.error("Network communication failure to order-service via Feign Client", e);
-            throw new IllegalStateException("Verification temporary unavailable. Please try again later.");
+            throw new ResourceNotFoundException("Verification temporary unavailable. Please try again later.");
         }
 
         if (Boolean.FALSE.equals(isVerifiedBuyer)) {

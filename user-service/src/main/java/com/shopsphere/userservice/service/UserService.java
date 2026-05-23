@@ -7,11 +7,16 @@ import com.shopsphere.userservice.dto.response.UserResponse;
 import com.shopsphere.userservice.entity.PasswordResetToken;
 import com.shopsphere.userservice.entity.Role;
 import com.shopsphere.userservice.entity.User;
+import com.shopsphere.userservice.exception.BadRequestException;
+import com.shopsphere.userservice.exception.DuplicateResourceException;
+import com.shopsphere.userservice.exception.ResourceNotFoundException;
 import com.shopsphere.userservice.repository.PasswordResetTokenRepository;
 import com.shopsphere.userservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,20 +39,34 @@ public class UserService {
 
     @Transactional
     public UserResponse registerUser(UserRegistrationRequest request) {
+        log.info("Registering user. email={}", request.email());
+
+        if (userRepository.existsByEmail(request.email())) {
+            log.warn("Registration failed - email already exists. email={}", request.email());
+            throw new DuplicateResourceException("Email already registered");
+        }
+
+        log.info("Registering user. username={}, email={}", request.username(), request.email());
         return createUserWithRole(request, Role.BUYER);
     }
 
     @Transactional
     public UserResponse registerAdmin(UserRegistrationRequest request) {
+        log.info("Registering admin. email={}", request.email());
+
+        if (userRepository.existsByEmail(request.email())) {
+            log.warn("Admin registration failed - email already exists. email={}", request.email());
+            throw new DuplicateResourceException("Email already registered");
+        }
         return createUserWithRole(request, Role.ADMIN);
     }
 
     public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.email())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid username or password"));
+                .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
 
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-            throw new IllegalArgumentException("Invalid username or password");
+            throw new BadCredentialsException("Invalid username or password");
         }
 
         String token = jwtService.generateToken(user);
@@ -59,10 +78,10 @@ public class UserService {
     @Transactional
     public String upgradeToSeller(String userId) {
         User user = userRepository.findById(UUID.fromString(userId))
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         if (user.getRole() == Role.SELLER || user.getRole() == Role.ADMIN) {
-            throw new IllegalStateException("User already possesses elevated privileges.");
+            throw new BadRequestException("User already possesses elevated privileges.");
         }
 
         user.setRole(Role.SELLER);
@@ -77,14 +96,14 @@ public class UserService {
     @Transactional(readOnly = true)
     public UserResponse getUserProfile(String userId) {
         User user = userRepository.findById(UUID.fromString(userId))
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         return mapToUserResponse(user);
     }
 
     @Transactional
     public UserResponse updateUser(String userId, UserUpdateRequest request) {
         User user = userRepository.findById(UUID.fromString(userId))
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         if (request.firstName() != null && !request.firstName().trim().isEmpty()) {
             user.setFirstName(request.firstName());
@@ -100,7 +119,7 @@ public class UserService {
 
         if (request.email() != null && !request.email().trim().isEmpty()) {
             if (userRepository.existsByEmail(request.email())) {
-                throw new IllegalArgumentException("Email is already registered");
+                throw new DuplicateResourceException("Email is already registered");
             }
             user.setEmail(request.email());
         }
@@ -114,7 +133,7 @@ public class UserService {
     @Transactional(readOnly = true)
     public UserResponse getUserById(String userId) {
         User user = userRepository.findById(UUID.fromString(userId))
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         return mapToUserResponse(user);
     }
 
@@ -163,17 +182,17 @@ public class UserService {
     public void resetPassword(PasswordResetRequest request) {
         // find the token in the db
         PasswordResetToken resetToken = tokenRepository.findByToken(request.token())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired token"));
+                .orElseThrow(() -> new AccessDeniedException("Invalid or expired token"));
 
         // security check: does the token actually belong to the email provided?
         if (!resetToken.getUser().getEmail().equalsIgnoreCase(request.email())) {
-            throw new IllegalArgumentException("Invalid or expired token");
+            throw new AccessDeniedException("Invalid or expired token");
         }
 
         // expiration Check: is it past the 15-minute window?
         if (resetToken.getExpiryDate().isBefore(LocalDateTime.now())) {
             tokenRepository.delete(resetToken); // Clean up the dead token
-            throw new IllegalArgumentException("Token has expired. Please request a new one.");
+            throw new AccessDeniedException("Token has expired. Please request a new one.");
         }
 
         // update the User's Password
@@ -188,10 +207,10 @@ public class UserService {
 
     private UserResponse createUserWithRole(UserRegistrationRequest request, Role role) {
         if (userRepository.existsByUsername(request.username())) {
-            throw new IllegalArgumentException("Username is already taken");
+            throw new DuplicateResourceException("Username is already taken");
         }
         if (userRepository.existsByEmail(request.email())) {
-            throw new IllegalArgumentException("Email is already registered");
+            throw new DuplicateResourceException("Email is already registered");
         }
 
         User user = User.builder()
