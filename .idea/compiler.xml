@@ -11,6 +11,7 @@
         <module name="cart-service" />
         <module name="inventory-service" />
         <module name="payment-service" />
+        <module name="coupon-service" />
         <module name="review-service" />
         <module name="api-gateway" />
         <module name="product-service" />
@@ -26,6 +27,7 @@
       <module name="api-gateway" options="-parameters" />
       <module name="cart-service" options="-parameters" />
       <module name="config-server" options="-parameters" />
+      <module name="coupon-service" options="-parameters" />
       <module name="eureka-server" options="-parameters" />
       <module name="inventory-service" options="-parameters" />
       <module name="notification-service" options="-parameters" />

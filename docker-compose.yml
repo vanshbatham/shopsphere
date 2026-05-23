@@ -98,8 +98,18 @@ services:
       - postgres-review-data:/var/lib/postgresql/data
     restart: unless-stopped
 
-
-
+  postgres-coupon:
+    image: postgres:15-alpine
+    container_name: shopsphere-postgres-coupon
+    environment:
+      POSTGRES_USER: vansh
+      POSTGRES_PASSWORD: vansh@postgres
+      POSTGRES_DB: coupon_service_db
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres-coupon-data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
