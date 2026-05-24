@@ -10,6 +10,8 @@ public record OrderRequest(
         String paymentMethod,
 
         @NotNull(message = "Address ID is required to ship the order")
-        UUID addressId
+        UUID addressId,
+
+        String couponCode
 ) {
 }

@@ -2,10 +2,12 @@ package com.shopsphere.orderservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shopsphere.orderservice.client.CartClient;
+import com.shopsphere.orderservice.client.CouponClient;
 import com.shopsphere.orderservice.client.InventoryClient;
 import com.shopsphere.orderservice.client.UserClient;
 import com.shopsphere.orderservice.dto.event.OrderStateEvent;
 import com.shopsphere.orderservice.dto.request.*;
+import com.shopsphere.orderservice.dto.response.CouponResponse;
 import com.shopsphere.orderservice.dto.response.OrderResponse;
 import com.shopsphere.orderservice.entity.Order;
 import com.shopsphere.orderservice.entity.OrderLineItem;
@@ -25,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +45,7 @@ public class OrderService {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final OrderEventPublisher eventPublisher;
     private final UserClient userClient;
+    private final CouponClient couponClient;
 
     @Transactional
     @CircuitBreaker(name = "inventoryService", fallbackMethod = "fallbackPlaceOrder")
@@ -57,9 +61,9 @@ public class OrderService {
         }
 
         List<OrderLineItem> orderLineItems = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
+        BigDecimal subtotal = BigDecimal.ZERO;
 
-        // 2. PROCESS ITEMS AND CALCULATE SECURE TOTAL
+        // 2. PROCESS ITEMS AND CALCULATE SECURE SUBTOTAL
         for (CartItemDto cartItem : cart.items()) {
             orderLineItems.add(OrderLineItem.builder()
                     .skuCode(cartItem.skuCode())
@@ -68,10 +72,44 @@ public class OrderService {
                     .build());
 
             BigDecimal itemTotal = cartItem.snapshotPrice().multiply(BigDecimal.valueOf(cartItem.quantity()));
-            totalAmount = totalAmount.add(itemTotal);
+            subtotal = subtotal.add(itemTotal);
         }
 
-        // 3. FETCH ADDRESS SNAPSHOT
+        BigDecimal finalTotalAmount = subtotal;
+
+        // 3. CONSUME COUPON & APPLY FINANCIAL MATH
+        if (orderRequest.couponCode() != null && !orderRequest.couponCode().isBlank()) {
+            log.info("Order contains coupon code: {}. Attempting to consume...", orderRequest.couponCode());
+            try {
+                // This triggers the pessimistic lock in the Coupon Service!
+                CouponResponse coupon = couponClient.consumeCoupon(orderRequest.couponCode());
+                log.info("Coupon consumed. Type: {}, Value: {}", coupon.discountType(), coupon.discountValue());
+
+                BigDecimal discountAmount = BigDecimal.ZERO;
+
+                if ("PERCENTAGE".equals(coupon.discountType().name())) {
+                    // Calculate percentage discount with proper rounding
+                    BigDecimal percentageMultiplier = coupon.discountValue().divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                    discountAmount = subtotal.multiply(percentageMultiplier);
+                } else if ("FLAT_AMOUNT".equals(coupon.discountType().name())) {
+                    discountAmount = coupon.discountValue();
+                }
+
+                finalTotalAmount = subtotal.subtract(discountAmount);
+
+                // Defensive guard: Total cannot be negative
+                if (finalTotalAmount.compareTo(BigDecimal.ZERO) < 0) {
+                    finalTotalAmount = BigDecimal.ZERO;
+                }
+                log.info("Discount applied: -{}. New Total: {}", discountAmount, finalTotalAmount);
+
+            } catch (feign.FeignException e) {
+                log.error("Failed to apply coupon. Feign Status: {}", e.status());
+                throw new BadRequestException("Invalid, expired, or maxed-out coupon code applied.");
+            }
+        }
+
+        // 4. FETCH ADDRESS SNAPSHOT
         AddressDto addressDto;
         try {
             log.info("Fetching address snapshot for Address ID: {}", orderRequest.addressId());
@@ -89,7 +127,7 @@ public class OrderService {
                 .country(addressDto.country())
                 .build();
 
-        // 4. HARD INVENTORY CHECK (Synchronous Network Call)
+        // 5. HARD INVENTORY CHECK
         for (OrderLineItem item : orderLineItems) {
             InventoryClient.InventoryRequest inventoryRequest = new InventoryClient.InventoryRequest(
                     item.getSkuCode(), item.getQuantity());
@@ -103,18 +141,18 @@ public class OrderService {
             }
         }
 
-        // 5. THE TRANSACTION BLOCK
+        // 6. THE TRANSACTION BLOCK
         try {
             Order order = Order.builder()
                     .orderNumber(UUID.randomUUID().toString())
                     .userId(userId)
                     .orderLineItems(orderLineItems)
-                    .paymentMethod(PaymentMethod.valueOf(orderRequest.paymentMethod())) // Set the requested payment method
+                    .paymentMethod(PaymentMethod.valueOf(orderRequest.paymentMethod()))
                     .shippingAddress(snapshotAddress)
+                    .totalAmount(finalTotalAmount) // <-- PERSISTING THE DISCOUNTED TOTAL
                     .build();
 
-            // --- THE ROUTING LOGIC ---
-            order.setPaymentStatus(PaymentStatus.PENDING); // All new orders start with PENDING money
+            order.setPaymentStatus(PaymentStatus.PENDING);
 
             if (order.getPaymentMethod() == PaymentMethod.COD) {
                 log.info("COD order detected. Fast-tracking to PROCESSING state.");
@@ -125,21 +163,20 @@ public class OrderService {
             }
 
             orderRepository.save(order);
-            log.info("Order {} placed successfully", order.getOrderNumber());
+            log.info("Order {} placed successfully. Final Total: {}", order.getOrderNumber(), finalTotalAmount);
 
-            // Notification Event
+            // Publish Events with the EXACT Final Amount
             String message = String.format("Order Placed Successfully! Order Number: %s, User ID: %s", order.getOrderNumber(), userId);
             kafkaTemplate.send("notificationTopic", message);
 
-            // Payment Event
-            OrderPlacedEvent event = new OrderPlacedEvent(order.getOrderNumber(), userId, totalAmount);
+            OrderPlacedEvent event = new OrderPlacedEvent(order.getOrderNumber(), userId, finalTotalAmount); // Use the discounted amount!
             ObjectMapper objectMapper = new ObjectMapper();
             String jsonMessage = objectMapper.writeValueAsString(event);
 
             kafkaTemplate.send("order-events-topic", jsonMessage);
             log.info("OrderPlacedEvent dispatched to Kafka for Order Number: {}", order.getOrderNumber());
 
-            // 6. CLEAR THE CART
+            // 7. CLEAR THE CART
             cartClient.clearCart(userId);
             log.info("Cart cleared for user: {}", userId);
 
@@ -148,7 +185,6 @@ public class OrderService {
         } catch (Exception e) {
             log.error("Transaction failed during finalization. Root cause: {}", e.getMessage(), e);
 
-            // SAGA COMPENSATION: Release the stock we just reserved!
             for (OrderLineItem item : orderLineItems) {
                 inventoryClient.releaseStock(new InventoryClient.InventoryRequest(item.getSkuCode(), item.getQuantity()));
             }
@@ -200,7 +236,6 @@ public class OrderService {
         eventPublisher.publishOrderCancelledEvent(new OrderStateEvent(order.getOrderNumber(), skuMap));
     }
 
-    // fallback method for Circuit Breaker
     public String fallbackPlaceOrder(String userId, OrderRequest orderRequest, Exception e) {
         log.error("Circuit Breaker triggered! Fallback active. Error: {}", e.getMessage());
         return "Oops! Our checkout system is currently busy or down. Your order cannot be placed right now. Please try again in a few moments.";
@@ -230,8 +265,6 @@ public class OrderService {
     @Transactional(readOnly = true)
     public boolean checkPurchaseHistory(String userId, String skuCode) {
         log.info("Verifying strict purchase history for User: {} and SKU: {}", userId, skuCode);
-
-        //optimized database query
         boolean isVerified = orderRepository.existsVerifiedPurchase(userId, skuCode);
 
         if (isVerified) {
@@ -244,17 +277,13 @@ public class OrderService {
     }
 
     public OrderResponse mapOrderToOrderResponse(Order order) {
-        BigDecimal calculatedTotal = order.getOrderLineItems().stream()
-                .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
         return OrderResponse.builder()
                 .id(order.getId())
                 .orderNumber(order.getOrderNumber())
                 .userId(order.getUserId())
                 .orderLineItems(order.getOrderLineItems())
                 .createdAt(order.getCreatedAt())
-                .totalPrice(calculatedTotal)
+                .totalPrice(order.getTotalAmount())
                 .orderStatus(order.getOrderStatus())
                 .paymentStatus(order.getPaymentStatus())
                 .paymentMethod(order.getPaymentMethod())

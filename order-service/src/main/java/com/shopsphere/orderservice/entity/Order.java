@@ -7,6 +7,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -41,6 +42,9 @@ public class Order {
 
     @Embedded
     private ShippingAddress shippingAddress;
+
+    @Column(nullable = false)
+    private BigDecimal totalAmount;
 
     @CreationTimestamp
     private LocalDateTime createdAt;
