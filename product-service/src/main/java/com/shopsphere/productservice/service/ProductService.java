@@ -4,6 +4,7 @@ import com.shopsphere.productservice.dto.request.ProductRequest;
 import com.shopsphere.productservice.dto.response.ProductResponse;
 import com.shopsphere.productservice.entity.Category;
 import com.shopsphere.productservice.entity.Product;
+import com.shopsphere.productservice.exception.DuplicateResourceException;
 import com.shopsphere.productservice.exception.ResourceNotFoundException;
 import com.shopsphere.productservice.repository.CategoryRepository;
 import com.shopsphere.productservice.repository.ProductRepository;
@@ -28,6 +29,10 @@ public class ProductService {
     private final CategoryRepository categoryRepository;
 
     public Category createCategory(String name, String description) {
+        if (categoryRepository.existsByName(name)) {
+            throw new DuplicateResourceException("Category with name '" + name + "' already exists");
+        }
+        
         Category category = Category.builder()
                 .name(name)
                 .description(description)

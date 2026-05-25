@@ -2,6 +2,7 @@ package com.shopsphere.userservice.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -33,8 +34,13 @@ public class SecurityConfig {
                                 "/api/v1/users/register",
                                 "/api/v1/users/login",
                                 "/api/v1/users/addresses",
-                                "/api/v1/users/addresses/**").permitAll()
-                        .anyRequest().authenticated()
+                                "/api/v1/users/addresses/**"
+                        ).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/users/profile").permitAll()
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/users/profile").permitAll()
+                        .requestMatchers("/api/v1/users/me").permitAll()
+                        .requestMatchers("/api/v1/users/become-seller").permitAll()
+                        .anyRequest().permitAll()
                 );
         return http.build();
     }

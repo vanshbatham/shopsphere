@@ -118,10 +118,15 @@ public class UserService {
         }
 
         if (request.email() != null && !request.email().trim().isEmpty()) {
-            if (userRepository.existsByEmail(request.email())) {
-                throw new DuplicateResourceException("Email is already registered");
+            String incomingEmail = request.email().trim();
+
+            if (!user.getEmail().equalsIgnoreCase(incomingEmail)) {
+
+                if (userRepository.existsByEmail(incomingEmail)) {
+                    throw new DuplicateResourceException("Email is already registered");
+                }
+                user.setEmail(incomingEmail);
             }
-            user.setEmail(request.email());
         }
 
         User updatedUser = userRepository.save(user);
