@@ -4,6 +4,7 @@ package com.shopsphere.productservice.controller;
 import com.shopsphere.productservice.dto.request.ProductRequest;
 import com.shopsphere.productservice.dto.response.ProductResponse;
 import com.shopsphere.productservice.entity.Category;
+import com.shopsphere.productservice.entity.Product;
 import com.shopsphere.productservice.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -114,6 +115,20 @@ public class ProductController {
     @GetMapping("/sku/{skuCode}")
     public ResponseEntity<ProductResponse> getProductBySkuCode(@PathVariable String skuCode) {
         return ResponseEntity.ok(productService.getProductBySkuCode(skuCode));
+    }
+
+    @Operation(summary = "Search products", description = "Searches for products based on a keyword that matches the product name, description, or category.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Search completed successfully")
+    })
+    @GetMapping("/search")
+    public ResponseEntity<Page<Product>> searchProducts(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size) {
+
+        Page<Product> results = productService.searchProducts(keyword, page, size);
+        return ResponseEntity.ok(results);
     }
 
 }

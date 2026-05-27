@@ -27,7 +27,14 @@ public class InventoryController {
             @ApiResponse(responseCode = "400", description = "Invalid input data")
     })
     @PostMapping("/add")
-    public ResponseEntity<String> addStock(@Valid @RequestBody InventoryRequest request) {
+    public ResponseEntity<String> addStock(@RequestHeader("X-User-Role") String role,
+                                           @Valid @RequestBody InventoryRequest request) {
+
+        if (!"SELLER".equals(role) && !"ADMIN".equals(role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body("Access Denied: You do not have permission to modify inventory.");
+        }
+        
         inventoryService.addStock(request.skuCode(), request.quantity());
         return ResponseEntity.status(HttpStatus.CREATED).body("Stock added successfully");
     }

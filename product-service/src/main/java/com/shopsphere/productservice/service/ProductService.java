@@ -32,7 +32,7 @@ public class ProductService {
         if (categoryRepository.existsByName(name)) {
             throw new DuplicateResourceException("Category with name '" + name + "' already exists");
         }
-        
+
         Category category = Category.builder()
                 .name(name)
                 .description(description)
@@ -118,6 +118,12 @@ public class ProductService {
                 product.getSkuCode(),
                 product.getCategory().getName(),
                 product.getImageUrl()
+        );
+    }
+
+    public Page<Product> searchProducts(String keyword, int page, int size) {
+        return productRepository.findByNameContainingIgnoreCaseOrDescriptionContainingIgnoreCaseOrCategoryNameContainingIgnoreCase(
+                keyword, keyword, keyword, PageRequest.of(page, size)
         );
     }
 }

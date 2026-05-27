@@ -25,6 +25,10 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
             ServerHttpRequest request = exchange.getRequest();
             String path = request.getURI().getPath();
 
+            if (request.getMethod().name().equals("OPTIONS")) {
+                return chain.filter(exchange);
+            }
+
             if (path.contains("/v3/api-docs") || path.contains("/swagger-ui")
                     || (path.startsWith("/api/v1/reviews/product/") && request.getMethod().name().equals("GET"))) {
                 return chain.filter(exchange);
