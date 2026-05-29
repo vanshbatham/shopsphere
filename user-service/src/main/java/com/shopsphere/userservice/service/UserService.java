@@ -6,11 +6,13 @@ import com.shopsphere.userservice.dto.response.AuthResponse;
 import com.shopsphere.userservice.dto.response.UserResponse;
 import com.shopsphere.userservice.entity.PasswordResetToken;
 import com.shopsphere.userservice.entity.Role;
+import com.shopsphere.userservice.entity.SellerProfile;
 import com.shopsphere.userservice.entity.User;
 import com.shopsphere.userservice.exception.BadRequestException;
 import com.shopsphere.userservice.exception.DuplicateResourceException;
 import com.shopsphere.userservice.exception.ResourceNotFoundException;
 import com.shopsphere.userservice.repository.PasswordResetTokenRepository;
+import com.shopsphere.userservice.repository.SellerRepository;
 import com.shopsphere.userservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +38,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final PasswordResetTokenRepository tokenRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final SellerRepository sellerRepository;
 
     @Transactional
     public UserResponse registerUser(UserRegistrationRequest request) {
@@ -235,6 +238,31 @@ public class UserService {
         log.info("{} registered successfully with ID: {}", role, savedUser.getId());
 
         return mapToUserResponse(savedUser);
+    }
+
+    @Transactional
+    public void becomeSeller(String userId, BecomeSellerRequest request) {
+        User user = userRepository.findById(UUID.fromString(userId))
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (Role.SELLER.equals(user.getRole())) {
+            throw new BadRequestException("User is already a seller.");
+        }
+
+        if (sellerRepository.existsByShopName(request.shopName())) {
+            throw new BadRequestException("Shop name is already in use. Please choose another.");
+        }
+
+        SellerProfile profile = SellerProfile.builder()
+                .user(user)
+                .shopName(request.shopName())
+                .shopDescription(request.shopDescription())
+                .build();
+
+        user.setSellerProfile(profile);
+        user.setRole(Role.SELLER);
+
+        userRepository.save(user);
     }
 
     private UserResponse mapToUserResponse(User user) {

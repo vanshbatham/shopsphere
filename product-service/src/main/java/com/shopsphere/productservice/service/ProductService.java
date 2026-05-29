@@ -126,4 +126,8 @@ public class ProductService {
                 keyword, keyword, keyword, PageRequest.of(page, size)
         );
     }
+
+    public List<Category> getAllCategories() {
+        return categoryRepository.findAll();
+    }
 }

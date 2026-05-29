@@ -55,6 +55,15 @@ public class ProductController {
         return new ResponseEntity<>(productService.createCategory(name, description), HttpStatus.CREATED);
     }
 
+    @Operation(summary = "Get all categories", description = "Retrieves a list of all product categories available in the marketplace.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Categories retrieved successfully")
+    })
+    @GetMapping("/categories")
+    public ResponseEntity<List<Category>> getAllCategories() {
+        return ResponseEntity.ok(productService.getAllCategories());
+    }
+
     @Operation(summary = "Create a new product", description = "Creates a new product under the specified category. Only users with ADMIN or SELLER role can access this endpoint.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "201", description = "Product created successfully"),

@@ -1,9 +1,6 @@
 package com.shopsphere.userservice.controller;
 
-import com.shopsphere.userservice.dto.request.LoginRequest;
-import com.shopsphere.userservice.dto.request.PasswordResetRequest;
-import com.shopsphere.userservice.dto.request.UserRegistrationRequest;
-import com.shopsphere.userservice.dto.request.UserUpdateRequest;
+import com.shopsphere.userservice.dto.request.*;
 import com.shopsphere.userservice.dto.response.AuthResponse;
 import com.shopsphere.userservice.dto.response.UserResponse;
 import com.shopsphere.userservice.service.UserService;
@@ -55,18 +52,6 @@ public class UserController {
     @GetMapping("/profile")
     public ResponseEntity<UserResponse> getProfile(@RequestHeader("X-User-Id") String userId) {
         return ResponseEntity.ok(userService.getUserProfile(userId));
-    }
-
-    @Operation(summary = "Upgrade user to seller", description = "Upgrades a regular user account to a seller account, allowing them to list products for sale.")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "User upgraded to seller successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid user ID or user already a seller"),
-            @ApiResponse(responseCode = "401", description = "Unauthorized")
-    })
-    @PostMapping("/become-seller")
-    public ResponseEntity<String> becomeSeller(@RequestHeader("X-User-Id") String userId) {
-        String responseMessage = userService.upgradeToSeller(userId);
-        return ResponseEntity.status(HttpStatus.OK).body(responseMessage);
     }
 
     @Operation(summary = "Create admin user", description = "Creates a new admin user account. This endpoint is restricted to existing admin users.")
@@ -129,5 +114,19 @@ public class UserController {
     public ResponseEntity<String> resetPassword(@Valid @RequestBody PasswordResetRequest request) {
         userService.resetPassword(request);
         return ResponseEntity.ok("Password has been successfully reset. You can now log in.");
+    }
+
+    @Operation(summary = "Upgrade user to seller", description = "Upgrades a regular user account to a seller account, allowing them to list products for sale.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "User upgraded to seller successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid user ID or user already a seller"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized")
+    })
+    @PostMapping("/become-seller")
+    public ResponseEntity<String> becomeSeller(@RequestHeader("X-User-Id") String userId,
+                                               @Valid @RequestBody BecomeSellerRequest request) {
+
+        userService.becomeSeller(userId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body("Successfully upgraded to Seller Account");
     }
 }

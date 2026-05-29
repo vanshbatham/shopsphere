@@ -49,6 +49,9 @@ public class User {
     @Column(nullable = false)
     private Role role;
 
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL)
+    private SellerProfile sellerProfile;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
