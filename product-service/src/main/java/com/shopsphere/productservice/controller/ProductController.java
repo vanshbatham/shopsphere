@@ -71,15 +71,13 @@ public class ProductController {
             @ApiResponse(responseCode = "400", description = "Invalid input data")
     })
     @PostMapping("/category/{categoryId}")
-    public ResponseEntity<ProductResponse> createProduct(@RequestHeader(value = "X-User-Role", required = false) String role,
+    public ResponseEntity<ProductResponse> createProduct(@RequestHeader("X-User-Id") String sellerId,
+                                                         @RequestHeader("X-Shop-Name") String shopName,
                                                          @PathVariable String categoryId,
-                                                         @Valid @RequestBody ProductRequest productRequest) {
+                                                         @Valid @RequestBody ProductRequest request) {
 
-        if (!"ADMIN".equals(role) && !"SELLER".equals(role)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-
-        return new ResponseEntity<>(productService.createProduct(productRequest, categoryId), HttpStatus.CREATED);
+        ProductResponse response = productService.createProduct(sellerId, shopName, request, categoryId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @Operation(summary = "Get products by category", description = "Retrieves a paginated list of products belonging to the specified category.")
@@ -138,6 +136,16 @@ public class ProductController {
 
         Page<Product> results = productService.searchProducts(keyword, page, size);
         return ResponseEntity.ok(results);
+    }
+
+    @Operation(summary = "Get products by seller", description = "Retrieves a list of products associated with a specific seller.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Products retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Seller not found")
+    })
+    @GetMapping("/seller/{sellerId}")
+    public ResponseEntity<List<ProductResponse>> getProductsBySeller(@PathVariable String sellerId) {
+        return ResponseEntity.ok(productService.getProductsBySeller(sellerId));
     }
 
 }

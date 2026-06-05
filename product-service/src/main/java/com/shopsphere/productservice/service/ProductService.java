@@ -41,7 +41,7 @@ public class ProductService {
     }
 
     @Transactional
-    public ProductResponse createProduct(ProductRequest request, String categoryId) {
+    public ProductResponse createProduct(String sellerId, String shopName, ProductRequest request, String categoryId) {
         Category category = categoryRepository.findById(categoryId)
                 .orElseThrow(() -> new ResourceNotFoundException("Category not found"));
 
@@ -50,12 +50,15 @@ public class ProductService {
                 .description(request.description())
                 .price(request.price())
                 .skuCode(request.skuCode())
+                .sellerId(sellerId)
+                .shopName(shopName)
                 .category(category)
                 .imageUrl(request.imageUrl())
                 .build();
 
         Product savedProduct = productRepository.save(product);
         log.info("Product created with ID: {}", savedProduct.getId());
+
         return new ProductResponse(
                 savedProduct.getId(),
                 savedProduct.getName(),
@@ -63,7 +66,8 @@ public class ProductService {
                 savedProduct.getPrice(),
                 savedProduct.getSkuCode(),
                 category.getName(),
-                savedProduct.getImageUrl()
+                savedProduct.getImageUrl(),
+                savedProduct.getShopName()
         );
     }
 
@@ -79,7 +83,9 @@ public class ProductService {
                 product.getPrice(),
                 product.getSkuCode(),
                 product.getCategory().getName(),
-                product.getImageUrl()
+                product.getImageUrl(),
+                product.getShopName()
+
         ));
     }
 
@@ -117,7 +123,8 @@ public class ProductService {
                 product.getPrice(),
                 product.getSkuCode(),
                 product.getCategory().getName(),
-                product.getImageUrl()
+                product.getImageUrl(),
+                product.getShopName()
         );
     }
 
@@ -129,5 +136,12 @@ public class ProductService {
 
     public List<Category> getAllCategories() {
         return categoryRepository.findAll();
+    }
+
+    public List<ProductResponse> getProductsBySeller(String sellerId) {
+        List<Product> products = productRepository.findBySellerId(sellerId);
+        return products.stream()
+                .map(this::mapToProductResponse)
+                .collect(Collectors.toList());
     }
 }

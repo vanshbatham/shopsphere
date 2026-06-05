@@ -40,6 +40,12 @@ public class Product {
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
 
+    @Column(name = "seller_id", nullable = false)
+    private String sellerId;
+
+    @Column(name = "shop_name")
+    private String shopName;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
