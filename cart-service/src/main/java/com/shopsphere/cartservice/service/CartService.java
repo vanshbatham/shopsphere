@@ -58,4 +58,37 @@ public class CartService {
         cartRepository.deleteById(userId);
         log.info("Cleared cart for user {}", userId);
     }
+
+    public void removeItemFromCart(String userId, String skuCode) {
+        Cart cart = cartRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Cart not found"));
+
+        cart.getItems().removeIf(item -> item.getSkuCode().equals(skuCode));
+
+        if (cart.getItems().isEmpty()) {
+            cartRepository.deleteById(userId);
+        } else {
+            cartRepository.save(cart);
+        }
+    }
+
+    public void decreaseItem(String userId, String skuCode, int quantityToDecrease) {
+        Cart cart = cartRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Cart not found"));
+
+        cart.getItems().stream()
+                .filter(item -> item.getSkuCode().equals(skuCode))
+                .findFirst()
+                .ifPresent(item -> {
+                    item.setQuantity(item.getQuantity() - quantityToDecrease);
+                });
+
+        cart.getItems().removeIf(item -> item.getQuantity() <= 0);
+        
+        if (cart.getItems().isEmpty()) {
+            cartRepository.deleteById(userId);
+        } else {
+            cartRepository.save(cart);
+        }
+    }
 }

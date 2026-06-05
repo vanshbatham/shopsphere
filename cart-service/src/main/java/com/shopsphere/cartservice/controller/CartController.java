@@ -52,4 +52,28 @@ public class CartController {
         cartService.clearCart(userId);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
+
+    @Operation(summary = "Remove Item from Cart", description = "Remove a specific item from the user's cart by SKU code")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Item removed from cart successfully"),
+            @ApiResponse(responseCode = "404", description = "Item not found in cart")
+    })
+    @DeleteMapping("/items/{skuCode}")
+    public ResponseEntity<String> removeItem(@RequestHeader("X-User-Id") String userId, @PathVariable String skuCode) {
+        cartService.removeItemFromCart(userId, skuCode);
+        return ResponseEntity.ok("Item removed successfully");
+    }
+
+    @Operation(summary = "Decrease Item Quantity", description = "Decrease the quantity of a specific item in the user's cart by SKU code")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Item quantity decreased successfully"),
+            @ApiResponse(responseCode = "404", description = "Item not found in cart")
+    })
+    @PostMapping("/decrease")
+    public ResponseEntity<String> decreaseItem(@RequestHeader("X-User-Id") String userId,
+                                               @RequestBody CartItemRequest request) {
+
+        cartService.decreaseItem(userId, request.skuCode(), request.quantity());
+        return ResponseEntity.ok("Item quantity decreased");
+    }
 }
