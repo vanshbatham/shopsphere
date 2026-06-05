@@ -25,20 +25,24 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
             ServerHttpRequest request = exchange.getRequest();
             String path = request.getURI().getPath();
 
+            // 1. Allow CORS Preflight requests to pass without a token
             if (request.getMethod().name().equals("OPTIONS")) {
                 return chain.filter(exchange);
             }
 
+            // 2. Public Endpoints bypass the filter
             if (path.contains("/v3/api-docs") || path.contains("/swagger-ui")
                     || (path.startsWith("/api/v1/reviews/product/") && request.getMethod().name().equals("GET"))) {
                 return chain.filter(exchange);
             }
 
+            // 3. Ensure Authorization header exists
             if (!request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
                 exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
                 return exchange.getResponse().setComplete();
             }
 
+            // 4. Extract the token
             String authHeader = request.getHeaders().get(HttpHeaders.AUTHORIZATION).get(0);
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 authHeader = authHeader.substring(7);
@@ -48,28 +52,34 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
             }
 
             try {
-                // validate the token
+                // 5. Validate token and extract claims
                 jwtUtil.validateToken(authHeader);
-
-                // extract claims
                 Claims claims = jwtUtil.getClaims(authHeader);
+
                 String userId = claims.get("userId").toString();
                 String role = claims.get("role").toString();
+                String shopName = claims.containsKey("shopName") ? claims.get("shopName").toString() : null;
 
-                // mutate the request (Add our custom internal headers)
-                request = exchange.getRequest()
+                // 6. Mutate the request to inject our custom headers
+                ServerHttpRequest.Builder requestBuilder = exchange.getRequest()
                         .mutate()
                         .header("X-User-Id", userId)
-                        .header("X-User-Role", role)
-                        .build();
+                        .header("X-User-Role", role);
+
+                // Conditionally attach the Shop Name header if it exists
+                if (shopName != null) {
+                    requestBuilder.header("X-Shop-Name", shopName);
+                }
+
+                request = requestBuilder.build();
 
             } catch (Exception e) {
-                // if token is expired or forged, reject the request
+                // If token is expired or forged, reject the request
                 exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                 return exchange.getResponse().setComplete();
             }
 
-            // forward the mutated request downstream
+            // 7. Forward the mutated request downstream
             return chain.filter(exchange.mutate().request(request).build());
         });
     }

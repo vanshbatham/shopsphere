@@ -24,7 +24,11 @@ public class JwtService {
     public String generateToken(User user) {
         Map<String, Object> extraClaims = new HashMap<>();
         extraClaims.put("role", user.getRole().name());
-        extraClaims.put("userId", user.getId());
+        extraClaims.put("userId", user.getId().toString());
+
+        if (user.getSellerProfile() != null) {
+            extraClaims.put("shopName", user.getSellerProfile().getShopName());
+        }
 
         return buildToken(extraClaims, user.getEmail(), jwtExpiration);
     }
