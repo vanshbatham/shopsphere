@@ -1,5 +1,6 @@
 package com.shopsphere.orderservice.controller;
 
+import com.shopsphere.orderservice.dto.request.DirectOrderRequest;
 import com.shopsphere.orderservice.dto.request.OrderRequest;
 import com.shopsphere.orderservice.dto.response.OrderResponse;
 import com.shopsphere.orderservice.service.OrderService;
@@ -107,5 +108,12 @@ public class OrderController {
         // business logic for checking historical order states
         boolean hasPurchased = orderService.checkPurchaseHistory(userId, productId);
         return ResponseEntity.ok(hasPurchased);
+    }
+
+    @Operation(summary = "Place Direct Order", description = "Allows admins to place an order directly , bypassing the cart.")
+    @PostMapping("/direct")
+    public ResponseEntity<String> placeDirectOrder(@RequestHeader("X-User-Id") String userId,
+                                                   @RequestBody DirectOrderRequest request) {
+        return ResponseEntity.ok(orderService.placeDirectOrder(userId, request));
     }
 }

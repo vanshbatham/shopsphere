@@ -1,10 +1,7 @@
 package com.shopsphere.orderservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.shopsphere.orderservice.client.CartClient;
-import com.shopsphere.orderservice.client.CouponClient;
-import com.shopsphere.orderservice.client.InventoryClient;
-import com.shopsphere.orderservice.client.UserClient;
+import com.shopsphere.orderservice.client.*;
 import com.shopsphere.orderservice.dto.event.OrderStateEvent;
 import com.shopsphere.orderservice.dto.request.*;
 import com.shopsphere.orderservice.dto.response.CouponResponse;
@@ -46,6 +43,7 @@ public class OrderService {
     private final OrderEventPublisher eventPublisher;
     private final UserClient userClient;
     private final CouponClient couponClient;
+    private final ProductClient productClient;
 
     @Transactional
     @CircuitBreaker(name = "inventoryService", fallbackMethod = "fallbackPlaceOrder")
@@ -274,6 +272,104 @@ public class OrderService {
         }
 
         return isVerified;
+    }
+
+    @Transactional
+    @CircuitBreaker(name = "inventoryService", fallbackMethod = "fallbackDirectOrder")
+    public String placeDirectOrder(String userId, DirectOrderRequest request) {
+
+        log.info("Initiating DIRECT checkout for user: {} for SKU: {}", userId, request.skuCode());
+
+        // 1. FETCH SECURE PRICE FROM PRODUCT SERVICE
+        BigDecimal itemPrice;
+        try {
+            itemPrice = productClient.getProductPrice(request.skuCode());
+        } catch (Exception e) {
+            log.error("Failed to fetch price for SKU: {}", request.skuCode(), e);
+            throw new BadRequestException("Invalid Product SKU.");
+        }
+
+        BigDecimal subtotal = itemPrice.multiply(BigDecimal.valueOf(request.quantity()));
+        BigDecimal finalTotalAmount = subtotal;
+
+        // 2. CONSUME COUPON
+        if (request.couponCode() != null && !request.couponCode().isBlank()) {
+            try {
+                CouponResponse coupon = couponClient.consumeCoupon(request.couponCode());
+                BigDecimal discountAmount = BigDecimal.ZERO;
+
+                if ("PERCENTAGE".equals(coupon.discountType().name())) {
+                    BigDecimal percentageMultiplier = coupon.discountValue().divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                    discountAmount = subtotal.multiply(percentageMultiplier);
+                } else if ("FLAT_AMOUNT".equals(coupon.discountType().name())) {
+                    discountAmount = coupon.discountValue();
+                }
+
+                finalTotalAmount = subtotal.subtract(discountAmount);
+                if (finalTotalAmount.compareTo(BigDecimal.ZERO) < 0) {
+                    finalTotalAmount = BigDecimal.ZERO;
+                }
+            } catch (feign.FeignException e) {
+                throw new BadRequestException("Invalid or expired coupon code.");
+            }
+        }
+
+        // 3. FETCH ADDRESS SNAPSHOT
+        AddressDto addressDto = userClient.getAddressById(userId, UUID.fromString(request.addressId()));
+        ShippingAddress snapshotAddress = ShippingAddress.builder()
+                .street(addressDto.street())
+                .city(addressDto.city())
+                .state(addressDto.state())
+                .zipCode(addressDto.zipCode())
+                .country(addressDto.country())
+                .build();
+
+        // 4. HARD INVENTORY CHECK
+        InventoryClient.InventoryRequest invReq = new InventoryClient.InventoryRequest(request.skuCode(), request.quantity());
+        if (Boolean.FALSE.equals(inventoryClient.reserveStock(invReq))) {
+            throw new BadRequestException("Insufficient stock for item: " + request.skuCode());
+        }
+
+        // 5. THE TRANSACTION BLOCK
+        try {
+            OrderLineItem singleItem = OrderLineItem.builder()
+                    .skuCode(request.skuCode())
+                    .price(itemPrice)
+                    .quantity(request.quantity())
+                    .build();
+
+            Order order = Order.builder()
+                    .orderNumber(UUID.randomUUID().toString())
+                    .userId(userId)
+                    .orderLineItems(List.of(singleItem))
+                    .paymentMethod(PaymentMethod.valueOf(request.paymentMethod()))
+                    .shippingAddress(snapshotAddress)
+                    .totalAmount(finalTotalAmount)
+                    .build();
+
+            order.setPaymentStatus(PaymentStatus.PENDING);
+            order.setOrderStatus(request.paymentMethod().equals("COD") ? OrderStatus.PROCESSING : OrderStatus.PLACED);
+
+            orderRepository.save(order);
+
+            // Publish Events
+            kafkaTemplate.send("notificationTopic", "Order Placed Successfully! Order Number: " + order.getOrderNumber());
+
+            OrderPlacedEvent event = new OrderPlacedEvent(order.getOrderNumber(), userId, finalTotalAmount);
+            ObjectMapper objectMapper = new ObjectMapper();
+            kafkaTemplate.send("order-events-topic", objectMapper.writeValueAsString(event));
+
+            // NOTE: We specifically DO NOT clear the cart here!
+            return "Order Placed Successfully. Order ID: " + order.getOrderNumber();
+
+        } catch (Exception e) {
+            inventoryClient.releaseStock(new InventoryClient.InventoryRequest(request.skuCode(), request.quantity()));
+            throw new RuntimeException("Direct Checkout failed, inventory released.");
+        }
+    }
+
+    public String fallbackDirectOrder(String userId, DirectOrderRequest request, Exception e) {
+        return "Oops! Our checkout system is currently busy. Your direct order cannot be placed right now.";
     }
 
     public OrderResponse mapOrderToOrderResponse(Order order) {
