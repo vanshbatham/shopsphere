@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @RestController
@@ -146,6 +147,16 @@ public class ProductController {
     @GetMapping("/seller/{sellerId}")
     public ResponseEntity<List<ProductResponse>> getProductsBySeller(@PathVariable String sellerId) {
         return ResponseEntity.ok(productService.getProductsBySeller(sellerId));
+    }
+
+    @Operation(summary = "Get product price by SKU code", description = "Retrieves the price of a product based on its SKU code.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Price retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Product not found")
+    })
+    @GetMapping("/sku/{skuCode}/price")
+    public ResponseEntity<BigDecimal> getProductPrice(@PathVariable String skuCode) {
+        return ResponseEntity.ok(productService.getPriceBySku(skuCode));
     }
 
 }

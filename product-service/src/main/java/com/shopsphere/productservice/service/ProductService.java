@@ -16,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -143,5 +144,11 @@ public class ProductService {
         return products.stream()
                 .map(this::mapToProductResponse)
                 .collect(Collectors.toList());
+    }
+
+    public BigDecimal getPriceBySku(String skuCode) {
+        Product product = productRepository.findBySkuCode(skuCode)
+                .orElseThrow(() -> new RuntimeException("Product not found for SKU: " + skuCode));
+        return product.getPrice();
     }
 }
