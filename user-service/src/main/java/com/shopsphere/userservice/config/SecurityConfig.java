@@ -35,6 +35,8 @@ public class SecurityConfig {
                                 "/api/v1/users/login",
                                 "/api/v1/users/addresses",
                                 "/api/v1/users/refresh",
+                                "/api/v1/coupons/**",
+                                "/api/v1/reviews/**",
                                 "/api/v1/users/addresses/**"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/profile").permitAll()

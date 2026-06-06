@@ -17,6 +17,8 @@ public class SecurityConfig {
                 .authorizeExchange(exchange -> exchange
                         .pathMatchers(
                                 "/api/v1/users/v3/api-docs/**",
+                                "/api/v1/coupons/v3/api-docs/**",
+                                "/api/v1/reviews/v3/api-docs/**",
                                 "/swagger-ui.html",
                                 "/webjars/**",
                                 "/swagger-ui/**",
