@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -66,6 +67,12 @@ public class CouponService {
         if (coupon.getUsageCount() >= coupon.getUsageLimit()) {
             throw new BadRequestException("This coupon has reached its maximum usage limit.");
         }
+    }
+
+    public List<CouponResponse> getAllCoupons() {
+        return couponRepository.findAll().stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 
     private CouponResponse mapToResponse(Coupon coupon) {
