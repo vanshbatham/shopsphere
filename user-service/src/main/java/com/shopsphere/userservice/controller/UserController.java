@@ -129,4 +129,16 @@ public class UserController {
         userService.becomeSeller(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body("Successfully upgraded to Seller Account");
     }
+
+
+    @Operation(summary = "Refresh access token", description = "Refreshes the access token using a valid refresh token.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Access token refreshed successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid refresh token")
+    })
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refreshToken(@RequestBody RefreshTokenRequest request) {
+        return ResponseEntity.ok(userService.refreshAccessToken(request));
+    }
+
 }
