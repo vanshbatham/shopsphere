@@ -1,5 +1,6 @@
 package com.shopsphere.paymentservice.exception;
 
+import jakarta.validation.ConstraintViolationException;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -111,5 +113,44 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                         "Internal Server Error",
                         "An unexpected error occurred. Please contact support."
                 ));
+    }
+
+    @ExceptionHandler(PaymentNotReadyException.class)
+    public ResponseEntity<Map<String, String>> handlePaymentNotReady(PaymentNotReadyException ex) {
+        log.warn("Payment not ready: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of(
+                        "error", ex.getMessage(),
+                        "retryable", "true"
+                ));
+    }
+
+    /**
+     * Webhook arrived for an Order ID we've never seen.
+     */
+    @ExceptionHandler(PaymentNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handlePaymentNotFound(PaymentNotFoundException ex) {
+        log.error("Payment record not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
+    /**
+     * Razorpay API call failed. Problem is upstream, not the client's fault.
+     */
+    @ExceptionHandler(PaymentGatewayException.class)
+    public ResponseEntity<Map<String, String>> handleGatewayError(PaymentGatewayException ex) {
+        log.error("Payment gateway error: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
+    /**
+     * @NotBlank or other validation annotation violations on controller inputs.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Map<String, String>> handleValidation(ConstraintViolationException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", ex.getMessage()));
     }
 }
