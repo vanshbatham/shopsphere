@@ -52,7 +52,7 @@ public class OrderService {
         log.info("Initiating checkout orchestration for user: {} with payment method: {}",
                 userId, orderRequest.paymentMethod());
 
-        // 1. GET THE SECURE CART (Source of Truth for Prices)
+        // 1. GET THE SECURE CART
         CartDto cart = cartClient.getCart(userId);
         if (cart == null || cart.items() == null || cart.items().isEmpty()) {
             throw new BadRequestException("Cannot place order: Cart is empty.");
@@ -79,14 +79,12 @@ public class OrderService {
         if (orderRequest.couponCode() != null && !orderRequest.couponCode().isBlank()) {
             log.info("Order contains coupon code: {}. Attempting to consume...", orderRequest.couponCode());
             try {
-                // This triggers the pessimistic lock in the Coupon Service!
                 CouponResponse coupon = couponClient.consumeCoupon(orderRequest.couponCode());
                 log.info("Coupon consumed. Type: {}, Value: {}", coupon.discountType(), coupon.discountValue());
 
                 BigDecimal discountAmount = BigDecimal.ZERO;
 
                 if ("PERCENTAGE".equals(coupon.discountType().name())) {
-                    // Calculate percentage discount with proper rounding
                     BigDecimal percentageMultiplier = coupon.discountValue().divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
                     discountAmount = subtotal.multiply(percentageMultiplier);
                 } else if ("FLAT_AMOUNT".equals(coupon.discountType().name())) {
@@ -95,7 +93,6 @@ public class OrderService {
 
                 finalTotalAmount = subtotal.subtract(discountAmount);
 
-                // Defensive guard: Total cannot be negative
                 if (finalTotalAmount.compareTo(BigDecimal.ZERO) < 0) {
                     finalTotalAmount = BigDecimal.ZERO;
                 }
@@ -142,12 +139,12 @@ public class OrderService {
         // 6. THE TRANSACTION BLOCK
         try {
             Order order = Order.builder()
-                    .orderNumber(UUID.randomUUID().toString())
+                    .orderNumber(UUID.randomUUID().toString()) // display-only label, not used as identifier
                     .userId(userId)
                     .orderLineItems(orderLineItems)
                     .paymentMethod(PaymentMethod.valueOf(orderRequest.paymentMethod()))
                     .shippingAddress(snapshotAddress)
-                    .totalAmount(finalTotalAmount) // <-- PERSISTING THE DISCOUNTED TOTAL
+                    .totalAmount(finalTotalAmount)
                     .build();
 
             order.setPaymentStatus(PaymentStatus.PENDING);
@@ -161,24 +158,26 @@ public class OrderService {
             }
 
             orderRepository.save(order);
-            log.info("Order {} placed successfully. Final Total: {}", order.getOrderNumber(), finalTotalAmount);
 
-            // Publish Events with the EXACT Final Amount
-            String message = String.format("Order Placed Successfully! Order Number: %s, User ID: %s", order.getOrderNumber(), userId);
+            String canonicalOrderId = order.getId().toString();
+            log.info("Order {} placed successfully. Final Total: {}", canonicalOrderId, finalTotalAmount);
+
+            String message = String.format("Order Placed Successfully! Order ID: %s, User ID: %s",
+                    canonicalOrderId, userId);
             kafkaTemplate.send("notificationTopic", message);
 
-            OrderPlacedEvent event = new OrderPlacedEvent(order.getOrderNumber(), userId, finalTotalAmount); // Use the discounted amount!
+            OrderPlacedEvent event = new OrderPlacedEvent(canonicalOrderId, userId, finalTotalAmount);
             ObjectMapper objectMapper = new ObjectMapper();
             String jsonMessage = objectMapper.writeValueAsString(event);
 
             kafkaTemplate.send("order-events-topic", jsonMessage);
-            log.info("OrderPlacedEvent dispatched to Kafka for Order Number: {}", order.getOrderNumber());
+            log.info("OrderPlacedEvent dispatched to Kafka for Order ID: {}", canonicalOrderId);
 
             // 7. CLEAR THE CART
             cartClient.clearCart(userId);
             log.info("Cart cleared for user: {}", userId);
 
-            return "Order Placed Successfully. Order ID: " + order.getOrderNumber();
+            return canonicalOrderId;
 
         } catch (Exception e) {
             log.error("Transaction failed during finalization. Root cause: {}", e.getMessage(), e);
@@ -339,7 +338,7 @@ public class OrderService {
                     .build();
 
             Order order = Order.builder()
-                    .orderNumber(UUID.randomUUID().toString())
+                    .orderNumber(UUID.randomUUID().toString()) // display-only label
                     .userId(userId)
                     .orderLineItems(List.of(singleItem))
                     .paymentMethod(PaymentMethod.valueOf(request.paymentMethod()))
@@ -352,15 +351,19 @@ public class OrderService {
 
             orderRepository.save(order);
 
-            // Publish Events
-            kafkaTemplate.send("notificationTopic", "Order Placed Successfully! Order Number: " + order.getOrderNumber());
+            // FIX: Same as placeOrder — use DB primary key in Kafka event and response.
+            String canonicalOrderId = order.getId().toString();
+            log.info("Direct Order {} placed successfully. Final Total: {}", canonicalOrderId, finalTotalAmount);
 
-            OrderPlacedEvent event = new OrderPlacedEvent(order.getOrderNumber(), userId, finalTotalAmount);
+            kafkaTemplate.send("notificationTopic",
+                    "Order Placed Successfully! Order ID: " + canonicalOrderId);
+
+            OrderPlacedEvent event = new OrderPlacedEvent(canonicalOrderId, userId, finalTotalAmount);
             ObjectMapper objectMapper = new ObjectMapper();
             kafkaTemplate.send("order-events-topic", objectMapper.writeValueAsString(event));
+            log.info("OrderPlacedEvent dispatched to Kafka for Order ID: {}", canonicalOrderId);
 
-            // NOTE: We specifically DO NOT clear the cart here!
-            return "Order Placed Successfully. Order ID: " + order.getOrderNumber();
+            return canonicalOrderId;
 
         } catch (Exception e) {
             inventoryClient.releaseStock(new InventoryClient.InventoryRequest(request.skuCode(), request.quantity()));

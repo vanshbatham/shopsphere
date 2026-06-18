@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -32,15 +33,21 @@ public class OrderController {
             @ApiResponse(responseCode = "503", description = "Inventory or Cart service is currently unavailable (Circuit Breaker fallback)")
     })
     @PostMapping
-    public ResponseEntity<String> placeOrder(
+    public ResponseEntity<Map<String, String>> placeOrder(
             @RequestHeader("X-User-Id") String userId,
             @Valid @RequestBody OrderRequest orderRequest
     ) {
-        String response = orderService.placeOrder(userId, orderRequest);
-        if (response.contains("Oops!")) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(response);
+        String result = orderService.placeOrder(userId, orderRequest);
+        if (result.startsWith("Oops!")) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", result));
         }
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(Map.of(
+                        "orderId", result,
+                        "message", "Order placed successfully"
+                ));
     }
 
     @Operation(summary = "Get user's order history", description = "Fetches all past and current orders for the authenticated user.")
@@ -93,7 +100,6 @@ public class OrderController {
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Order cancelled and inventory release triggered"),
             @ApiResponse(responseCode = "404", description = "Order not found")
-
     })
     @PutMapping("/{orderId}/cancel")
     public ResponseEntity<String> cancelOrder(@PathVariable String orderId) {
@@ -105,15 +111,27 @@ public class OrderController {
     @GetMapping("/internal/verify-purchase")
     public ResponseEntity<Boolean> verifyUserPurchase(@RequestParam("userId") String userId,
                                                       @RequestParam("productId") String productId) {
-        // business logic for checking historical order states
         boolean hasPurchased = orderService.checkPurchaseHistory(userId, productId);
         return ResponseEntity.ok(hasPurchased);
     }
 
-    @Operation(summary = "Place Direct Order", description = "Allows admins to place an order directly , bypassing the cart.")
+    @Operation(summary = "Place Direct Order", description = "Allows placing an order directly, bypassing the cart.")
     @PostMapping("/direct")
-    public ResponseEntity<String> placeDirectOrder(@RequestHeader("X-User-Id") String userId,
-                                                   @RequestBody DirectOrderRequest request) {
-        return ResponseEntity.ok(orderService.placeDirectOrder(userId, request));
+    public ResponseEntity<Map<String, String>> placeDirectOrder(
+            @RequestHeader("X-User-Id") String userId,
+            @RequestBody DirectOrderRequest request) {
+
+        String result = orderService.placeDirectOrder(userId, request);
+
+        if (result.startsWith("Oops!")) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", result));
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(Map.of(
+                        "orderId", result,
+                        "message", "Order placed successfully"
+                ));
     }
 }
