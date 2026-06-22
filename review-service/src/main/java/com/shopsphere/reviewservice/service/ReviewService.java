@@ -5,12 +5,14 @@ import com.shopsphere.reviewservice.dto.request.ReviewRequest;
 import com.shopsphere.reviewservice.dto.response.ReviewResponse;
 import com.shopsphere.reviewservice.entity.Review;
 import com.shopsphere.reviewservice.exception.DuplicateResourceException;
-import com.shopsphere.reviewservice.exception.ResourceNotFoundException;
 import com.shopsphere.reviewservice.repository.ReviewRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -37,12 +39,13 @@ public class ReviewService {
             isVerifiedBuyer = orderClient.verifyUserPurchase(userId, request.productId());
         } catch (Exception e) {
             log.error("Network communication failure to order-service via Feign Client", e);
-            throw new ResourceNotFoundException("Verification temporary unavailable. Please try again later.");
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Verification temporarily unavailable. Please try again later.");
         }
 
         if (Boolean.FALSE.equals(isVerifiedBuyer)) {
             log.warn("Security Alert: User {} attempted to review unpurchased product {}", userId, request.productId());
-            throw new SecurityException("Access Denied: You can only review products you have officially purchased.");
+            throw new AccessDeniedException("You can only review products you have officially purchased.");
         }
 
         Review review = Review.builder()

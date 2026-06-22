@@ -52,7 +52,7 @@ public class OrderService {
         log.info("Initiating checkout orchestration for user: {} with payment method: {}",
                 userId, orderRequest.paymentMethod());
 
-        // 1. GET THE SECURE CART
+        // 1. GET THE SECURE CART (Source of Truth for Prices)
         CartDto cart = cartClient.getCart(userId);
         if (cart == null || cart.items() == null || cart.items().isEmpty()) {
             throw new BadRequestException("Cannot place order: Cart is empty.");
@@ -194,6 +194,11 @@ public class OrderService {
         Order order = orderRepository.findById(UUID.fromString(orderId))
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
+        if (order.getPaymentStatus() == PaymentStatus.COMPLETED) {
+            log.info("Order {} payment already confirmed. Ignoring duplicate event.", orderId);
+            return;
+        }
+
         if (order.getPaymentStatus() != PaymentStatus.PENDING) {
             throw new BadRequestException("Only PENDING payments can be confirmed");
         }
@@ -212,12 +217,43 @@ public class OrderService {
     }
 
     @Transactional
+    public void handleFailedPayment(String orderId) {
+        Order order = orderRepository.findById(UUID.fromString(orderId))
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (order.getOrderStatus() == OrderStatus.CANCELLED
+                || order.getPaymentStatus() == PaymentStatus.COMPLETED) {
+            log.info("Order {} already in terminal state ({}, {}). Ignoring duplicate failed-payment event.",
+                    orderId, order.getOrderStatus(), order.getPaymentStatus());
+            return;
+        }
+
+        order.setOrderStatus(OrderStatus.CANCELLED);
+        order.setPaymentStatus(PaymentStatus.FAILED);
+        orderRepository.save(order);
+
+        Map<String, Integer> skuMap = order.getOrderLineItems().stream()
+                .collect(Collectors.toMap(
+                        OrderLineItem::getSkuCode,
+                        OrderLineItem::getQuantity
+                ));
+
+        eventPublisher.publishOrderCancelledEvent(new OrderStateEvent(order.getOrderNumber(), skuMap));
+        log.warn("Order {} payment failed. Order cancelled and inventory released.", orderId);
+    }
+
+    @Transactional
     public void cancelOrder(String orderId) {
         Order order = orderRepository.findById(UUID.fromString(orderId))
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
         if (order.getOrderStatus() == OrderStatus.SHIPPED || order.getOrderStatus() == OrderStatus.DELIVERED) {
             throw new BadRequestException("Cannot cancel an order that has already shipped");
+        }
+
+        if (order.getOrderStatus() == OrderStatus.CANCELLED) {
+            log.info("Order {} is already cancelled. Ignoring duplicate cancel request.", orderId);
+            return;
         }
 
         order.setOrderStatus(OrderStatus.CANCELLED);
@@ -351,7 +387,6 @@ public class OrderService {
 
             orderRepository.save(order);
 
-            // FIX: Same as placeOrder — use DB primary key in Kafka event and response.
             String canonicalOrderId = order.getId().toString();
             log.info("Direct Order {} placed successfully. Final Total: {}", canonicalOrderId, finalTotalAmount);
 
