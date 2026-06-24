@@ -1,6 +1,7 @@
 package com.shopsphere.productservice.dto.response;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 public record ProductResponse(
@@ -11,6 +12,7 @@ public record ProductResponse(
         String skuCode,
         String category,
         String imageUrl,
-        String shopName
+        String shopName,
+        List<String> imageUrls
 ) {
 }

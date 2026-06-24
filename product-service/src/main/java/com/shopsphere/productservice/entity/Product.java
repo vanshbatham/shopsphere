@@ -7,6 +7,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -31,7 +33,14 @@ public class Product {
     @Column(nullable = false)
     private BigDecimal price;
 
-    private String imageUrl; // URL to CDN/S3 bucket
+    private String imageUrl;
+    
+    @ElementCollection
+    @CollectionTable(name = "product_images", joinColumns = @JoinColumn(name = "product_id"))
+    @Column(name = "image_url")
+    @OrderColumn(name = "image_order")
+    @Builder.Default
+    private List<String> imageUrls = new ArrayList<>();
 
     @Column(nullable = false)
     private String skuCode;

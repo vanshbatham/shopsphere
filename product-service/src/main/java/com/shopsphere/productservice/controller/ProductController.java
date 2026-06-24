@@ -16,9 +16,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/products")
@@ -79,6 +81,46 @@ public class ProductController {
 
         ProductResponse response = productService.createProduct(sellerId, shopName, request, categoryId);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @Operation(summary = "Update an existing product", description = "Updates a product's details. Only the owning seller or an ADMIN can perform this action.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Product updated successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not the product owner"),
+            @ApiResponse(responseCode = "404", description = "Product not found")
+    })
+    @PutMapping("/{productId}")
+    public ResponseEntity<ProductResponse> updateProduct(@RequestHeader("X-User-Id") String sellerId,
+                                                         @RequestHeader(value = "X-User-Role", required = false) String userRole,
+                                                         @PathVariable String productId,
+                                                         @Valid @RequestBody ProductRequest request) {
+        ProductResponse response = productService.updateProduct(sellerId, userRole, productId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Delete a product", description = "Deletes a product permanently. Only the owning seller or an ADMIN can perform this action.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Product deleted successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Not the product owner"),
+            @ApiResponse(responseCode = "404", description = "Product not found")
+    })
+    @DeleteMapping("/{productId}")
+    public ResponseEntity<Void> deleteProduct(@RequestHeader("X-User-Id") String sellerId,
+                                              @RequestHeader(value = "X-User-Role", required = false) String userRole,
+                                              @PathVariable String productId) {
+        productService.deleteProduct(sellerId, userRole, productId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Upload product images", description = "Uploads one or more image files and returns their accessible URLs. Call this BEFORE create/update product, then pass the returned URLs in the imageUrls field.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Images uploaded successfully")
+    })
+    @PostMapping(value = "/images", consumes = "multipart/form-data")
+    public ResponseEntity<Map<String, List<String>>> uploadImages(@RequestHeader("X-User-Id") String sellerId,
+                                                                  @RequestParam("files") List<MultipartFile> files) {
+        List<String> urls = productService.uploadImages(files);
+        return ResponseEntity.ok(Map.of("imageUrls", urls));
     }
 
     @Operation(summary = "Get products by category", description = "Retrieves a paginated list of products belonging to the specified category.")

@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public record ProductRequest(
 
@@ -20,6 +21,8 @@ public record ProductRequest(
         @NotBlank(message = "SKU Code is required")
         String skuCode,
 
-        String imageUrl
+        String imageUrl,
+        
+        List<String> imageUrls
 ) {
 }

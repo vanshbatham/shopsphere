@@ -3,6 +3,7 @@ package com.shopsphere.orderservice.controller;
 import com.shopsphere.orderservice.dto.request.DirectOrderRequest;
 import com.shopsphere.orderservice.dto.request.OrderRequest;
 import com.shopsphere.orderservice.dto.response.OrderResponse;
+import com.shopsphere.orderservice.dto.response.SkuSummaryResponse;
 import com.shopsphere.orderservice.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -133,5 +134,15 @@ public class OrderController {
                         "orderId", result,
                         "message", "Order placed successfully"
                 ));
+    }
+
+    @Operation(summary = "Get seller earnings summary", description = "Aggregates quantity sold and revenue per SKU for COMPLETED-payment orders only, scoped to the SKUs passed in. Used by the seller dashboard's earnings page.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Summary retrieved successfully")
+    })
+    @GetMapping("/seller-summary")
+    public ResponseEntity<List<SkuSummaryResponse>> getSellerSummary(
+            @RequestParam("skuCodes") List<String> skuCodes) {
+        return ResponseEntity.ok(orderService.getSellerSummary(skuCodes));
     }
 }

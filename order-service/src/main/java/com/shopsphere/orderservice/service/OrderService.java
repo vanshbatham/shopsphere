@@ -6,6 +6,7 @@ import com.shopsphere.orderservice.dto.event.OrderStateEvent;
 import com.shopsphere.orderservice.dto.request.*;
 import com.shopsphere.orderservice.dto.response.CouponResponse;
 import com.shopsphere.orderservice.dto.response.OrderResponse;
+import com.shopsphere.orderservice.dto.response.SkuSummaryResponse;
 import com.shopsphere.orderservice.entity.Order;
 import com.shopsphere.orderservice.entity.OrderLineItem;
 import com.shopsphere.orderservice.entity.ShippingAddress;
@@ -25,10 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -423,5 +421,34 @@ public class OrderService {
                 .paymentMethod(order.getPaymentMethod())
                 .shippingAddress(order.getShippingAddress())
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public List<SkuSummaryResponse> getSellerSummary(List<String> skuCodes) {
+        Set<String> skuSet = new HashSet<>(skuCodes);
+        Map<String, Integer> qtyBySku = new HashMap<>();
+        Map<String, BigDecimal> revenueBySku = new HashMap<>();
+
+        List<Order> allOrders = orderRepository.findAll();
+        for (Order order : allOrders) {
+            if (order.getPaymentStatus() != PaymentStatus.COMPLETED) continue;
+            if (order.getOrderLineItems() == null) continue;
+
+            for (OrderLineItem item : order.getOrderLineItems()) {
+                if (!skuSet.contains(item.getSkuCode())) continue;
+
+                qtyBySku.merge(item.getSkuCode(), item.getQuantity(), Integer::sum);
+                BigDecimal lineRevenue = item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+                revenueBySku.merge(item.getSkuCode(), lineRevenue, BigDecimal::add);
+            }
+        }
+
+        return skuCodes.stream()
+                .map(sku -> new SkuSummaryResponse(
+                        sku,
+                        qtyBySku.getOrDefault(sku, 0),
+                        revenueBySku.getOrDefault(sku, BigDecimal.ZERO)
+                ))
+                .toList();
     }
 }
