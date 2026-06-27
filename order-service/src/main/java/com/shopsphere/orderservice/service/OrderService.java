@@ -102,7 +102,20 @@ public class OrderService {
             }
         }
 
-        // 4. FETCH ADDRESS SNAPSHOT
+        // 4. APPLY THE ONLY TWO FEES THIS APP CHARGES: a flat ₹9 platform fee
+        // for Cash on Delivery orders, and a ₹49 delivery fee on orders under
+        // ₹500 (free at/above that threshold). Must mirror Checkout.jsx and
+        // Cart.jsx exactly, or the amount charged via Razorpay and the amount
+        // stored as the order's totalAmount will disagree.
+        BigDecimal platformFee = "COD".equals(orderRequest.paymentMethod())
+                ? new BigDecimal("9")
+                : BigDecimal.ZERO;
+        BigDecimal deliveryFee = finalTotalAmount.compareTo(new BigDecimal("500")) < 0
+                ? new BigDecimal("49")
+                : BigDecimal.ZERO;
+        finalTotalAmount = finalTotalAmount.add(platformFee).add(deliveryFee);
+
+        // 5. FETCH ADDRESS SNAPSHOT
         AddressDto addressDto;
         try {
             log.info("Fetching address snapshot for Address ID: {}", orderRequest.addressId());
@@ -120,7 +133,7 @@ public class OrderService {
                 .country(addressDto.country())
                 .build();
 
-        // 5. HARD INVENTORY CHECK
+        // 6. HARD INVENTORY CHECK
         for (OrderLineItem item : orderLineItems) {
             InventoryClient.InventoryRequest inventoryRequest = new InventoryClient.InventoryRequest(
                     item.getSkuCode(), item.getQuantity());
@@ -134,10 +147,10 @@ public class OrderService {
             }
         }
 
-        // 6. THE TRANSACTION BLOCK
+        // 7. THE TRANSACTION BLOCK
         try {
             Order order = Order.builder()
-                    .orderNumber(UUID.randomUUID().toString()) // display-only label, not used as identifier
+                    .orderNumber(UUID.randomUUID().toString()) // displaying-only label, not used as identifier
                     .userId(userId)
                     .orderLineItems(orderLineItems)
                     .paymentMethod(PaymentMethod.valueOf(orderRequest.paymentMethod()))
@@ -171,7 +184,7 @@ public class OrderService {
             kafkaTemplate.send("order-events-topic", jsonMessage);
             log.info("OrderPlacedEvent dispatched to Kafka for Order ID: {}", canonicalOrderId);
 
-            // 7. CLEAR THE CART
+            // 8. CLEAR THE CART
             cartClient.clearCart(userId);
             log.info("Cart cleared for user: {}", userId);
 
@@ -347,7 +360,17 @@ public class OrderService {
             }
         }
 
-        // 3. FETCH ADDRESS SNAPSHOT
+        // 3. APPLY THE SAME TWO FEES AS THE CART CHECKOUT FLOW (see placeOrder
+        // above for details) — COD platform fee + under-₹500 delivery fee.
+        BigDecimal platformFee = "COD".equals(request.paymentMethod())
+                ? new BigDecimal("9")
+                : BigDecimal.ZERO;
+        BigDecimal deliveryFee = finalTotalAmount.compareTo(new BigDecimal("500")) < 0
+                ? new BigDecimal("49")
+                : BigDecimal.ZERO;
+        finalTotalAmount = finalTotalAmount.add(platformFee).add(deliveryFee);
+
+        // 4. FETCH ADDRESS SNAPSHOT
         AddressDto addressDto = userClient.getAddressById(userId, UUID.fromString(request.addressId()));
         ShippingAddress snapshotAddress = ShippingAddress.builder()
                 .street(addressDto.street())
@@ -357,13 +380,13 @@ public class OrderService {
                 .country(addressDto.country())
                 .build();
 
-        // 4. HARD INVENTORY CHECK
+        // 5. HARD INVENTORY CHECK
         InventoryClient.InventoryRequest invReq = new InventoryClient.InventoryRequest(request.skuCode(), request.quantity());
         if (Boolean.FALSE.equals(inventoryClient.reserveStock(invReq))) {
             throw new BadRequestException("Insufficient stock for item: " + request.skuCode());
         }
 
-        // 5. THE TRANSACTION BLOCK
+        // 6. THE TRANSACTION BLOCK
         try {
             OrderLineItem singleItem = OrderLineItem.builder()
                     .skuCode(request.skuCode())
