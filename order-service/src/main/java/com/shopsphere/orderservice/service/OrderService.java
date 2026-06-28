@@ -2,11 +2,12 @@ package com.shopsphere.orderservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shopsphere.orderservice.client.*;
+import com.shopsphere.orderservice.dto.event.OrderItemSnapshot;
 import com.shopsphere.orderservice.dto.event.OrderStateEvent;
+import com.shopsphere.orderservice.dto.event.OrderStatusNotificationEvent;
+import com.shopsphere.orderservice.dto.event.ShippingAddressSnapshot;
 import com.shopsphere.orderservice.dto.request.*;
-import com.shopsphere.orderservice.dto.response.CouponResponse;
-import com.shopsphere.orderservice.dto.response.OrderResponse;
-import com.shopsphere.orderservice.dto.response.SkuSummaryResponse;
+import com.shopsphere.orderservice.dto.response.*;
 import com.shopsphere.orderservice.entity.Order;
 import com.shopsphere.orderservice.entity.OrderLineItem;
 import com.shopsphere.orderservice.entity.ShippingAddress;
@@ -42,6 +43,7 @@ public class OrderService {
     private final UserClient userClient;
     private final CouponClient couponClient;
     private final ProductClient productClient;
+    private final ObjectMapper notificationObjectMapper = new ObjectMapper();
 
     @Transactional
     @CircuitBreaker(name = "inventoryService", fallbackMethod = "fallbackPlaceOrder")
@@ -102,11 +104,9 @@ public class OrderService {
             }
         }
 
-        // 4. APPLY THE ONLY TWO FEES THIS APP CHARGES: a flat ₹9 platform fee
+        // 4. APPLYING THE ONLY TWO FEES THIS APP CHARGES: a flat ₹9 platform fee
         // for Cash on Delivery orders, and a ₹49 delivery fee on orders under
-        // ₹500 (free at/above that threshold). Must mirror Checkout.jsx and
-        // Cart.jsx exactly, or the amount charged via Razorpay and the amount
-        // stored as the order's totalAmount will disagree.
+        // ₹500 (free at/above that threshold).
         BigDecimal platformFee = "COD".equals(orderRequest.paymentMethod())
                 ? new BigDecimal("9")
                 : BigDecimal.ZERO;
@@ -184,6 +184,8 @@ public class OrderService {
             kafkaTemplate.send("order-events-topic", jsonMessage);
             log.info("OrderPlacedEvent dispatched to Kafka for Order ID: {}", canonicalOrderId);
 
+            sendOrderNotification(order, "PLACED");
+
             // 8. CLEAR THE CART
             cartClient.clearCart(userId);
             log.info("Cart cleared for user: {}", userId);
@@ -251,6 +253,8 @@ public class OrderService {
 
         eventPublisher.publishOrderCancelledEvent(new OrderStateEvent(order.getOrderNumber(), skuMap));
         log.warn("Order {} payment failed. Order cancelled and inventory released.", orderId);
+
+        sendOrderNotification(order, "CANCELLED");
     }
 
     @Transactional
@@ -278,6 +282,89 @@ public class OrderService {
                 ));
 
         eventPublisher.publishOrderCancelledEvent(new OrderStateEvent(order.getOrderNumber(), skuMap));
+
+        sendOrderNotification(order, "CANCELLED");
+    }
+
+    private void sendOrderNotification(Order order, String status) {
+        try {
+            UserBasicInfo userInfo = userClient.getUserBasicInfo(order.getUserId());
+
+            List<OrderItemSnapshot> itemSnapshots = order.getOrderLineItems() == null
+                    ? List.of()
+                    : order.getOrderLineItems().stream()
+                      .map(item -> new OrderItemSnapshot(
+                              resolveProductName(item.getSkuCode()),
+                              item.getSkuCode(),
+                              item.getQuantity(),
+                              item.getPrice()
+                      ))
+                      .toList();
+
+            ShippingAddressSnapshot addressSnapshot = order.getShippingAddress() == null
+                    ? null
+                    : new ShippingAddressSnapshot(
+                    order.getShippingAddress().getStreet(),
+                    order.getShippingAddress().getCity(),
+                    order.getShippingAddress().getState(),
+                    order.getShippingAddress().getZipCode(),
+                    order.getShippingAddress().getCountry()
+            );
+
+            OrderStatusNotificationEvent event = new OrderStatusNotificationEvent(
+                    userInfo.email(),
+                    userInfo.firstName(),
+                    order.getId().toString(),
+                    order.getOrderNumber(),
+                    order.getTotalAmount(),
+                    status,
+                    itemSnapshots,
+                    addressSnapshot
+            );
+            String json = notificationObjectMapper.writeValueAsString(event);
+            kafkaTemplate.send("order-notification-topic", json);
+            log.info("Dispatched {} notification for order {} to {}", status, order.getId(), userInfo.email());
+        } catch (Exception e) {
+            log.error("Failed to send {} notification email for order {}", status, order.getId(), e);
+        }
+    }
+    
+    private String resolveProductName(String skuCode) {
+        try {
+            ProductBasicInfo product = productClient.getProductBySkuCode(skuCode);
+            return product != null && product.name() != null ? product.name() : skuCode;
+        } catch (Exception e) {
+            log.warn("Could not resolve product name for SKU {} in notification email, falling back to SKU code", skuCode);
+            return skuCode;
+        }
+    }
+
+    @Transactional
+    public void updateOrderStatus(String orderId, OrderStatus newStatus) {
+        if (newStatus != OrderStatus.SHIPPED && newStatus != OrderStatus.DELIVERED) {
+            throw new BadRequestException(
+                    "This endpoint only supports transitioning to SHIPPED or DELIVERED");
+        }
+
+        Order order = orderRepository.findById(UUID.fromString(orderId))
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (newStatus == OrderStatus.SHIPPED && order.getOrderStatus() != OrderStatus.PROCESSING) {
+            throw new BadRequestException(
+                    "Order must be PROCESSING before it can be marked SHIPPED. Current status: "
+                            + order.getOrderStatus());
+        }
+        if (newStatus == OrderStatus.DELIVERED && order.getOrderStatus() != OrderStatus.SHIPPED) {
+            throw new BadRequestException(
+                    "Order must be SHIPPED before it can be marked DELIVERED. Current status: "
+                            + order.getOrderStatus());
+        }
+
+        order.setOrderStatus(newStatus);
+        orderRepository.save(order);
+        log.info("Order {} status updated to {}", orderId, newStatus);
+
+        sendOrderNotification(order, newStatus.name());
     }
 
     public String fallbackPlaceOrder(String userId, OrderRequest orderRequest, Exception e) {
@@ -418,6 +505,8 @@ public class OrderService {
             ObjectMapper objectMapper = new ObjectMapper();
             kafkaTemplate.send("order-events-topic", objectMapper.writeValueAsString(event));
             log.info("OrderPlacedEvent dispatched to Kafka for Order ID: {}", canonicalOrderId);
+
+            sendOrderNotification(order, "PLACED");
 
             return canonicalOrderId;
 

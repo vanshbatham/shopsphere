@@ -118,9 +118,8 @@ public class OrderController {
 
     @Operation(summary = "Place Direct Order", description = "Allows placing an order directly, bypassing the cart.")
     @PostMapping("/direct")
-    public ResponseEntity<Map<String, String>> placeDirectOrder(
-            @RequestHeader("X-User-Id") String userId,
-            @RequestBody DirectOrderRequest request) {
+    public ResponseEntity<Map<String, String>> placeDirectOrder(@RequestHeader("X-User-Id") String userId,
+                                                                @RequestBody DirectOrderRequest request) {
 
         String result = orderService.placeDirectOrder(userId, request);
 
@@ -134,6 +133,25 @@ public class OrderController {
                         "orderId", result,
                         "message", "Order placed successfully"
                 ));
+    }
+
+    @Operation(summary = "Update order status (Admin Only)", description = "Transitions an order to SHIPPED or DELIVERED. Requires ADMIN role header. Sends a notification email to the buyer.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Order status updated successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid status transition for the order's current state"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - User does not have the required role"),
+            @ApiResponse(responseCode = "404", description = "Order not found")
+    })
+    @PutMapping("/{orderId}/status")
+    public ResponseEntity<String> updateOrderStatus(
+            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @PathVariable String orderId,
+            @RequestParam com.shopsphere.orderservice.enums.OrderStatus status) {
+        if (!"ADMIN".equals(userRole)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        orderService.updateOrderStatus(orderId, status);
+        return ResponseEntity.ok("Order status updated to " + status);
     }
 
     @Operation(summary = "Get seller earnings summary", description = "Aggregates quantity sold and revenue per SKU for COMPLETED-payment orders only, scoped to the SKUs passed in. Used by the seller dashboard's earnings page.")

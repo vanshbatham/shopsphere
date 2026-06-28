@@ -1,6 +1,7 @@
 package com.shopsphere.orderservice.client;
 
 import com.shopsphere.orderservice.dto.request.AddressDto;
+import com.shopsphere.orderservice.dto.response.UserBasicInfo;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,4 +17,7 @@ public interface UserClient {
             @RequestHeader("X-User-Id") String userId,
             @PathVariable("addressId") UUID addressId
     );
+    
+    @GetMapping("/api/v1/users/me")
+    UserBasicInfo getUserBasicInfo(@RequestHeader("X-User-Id") String userId);
 }
