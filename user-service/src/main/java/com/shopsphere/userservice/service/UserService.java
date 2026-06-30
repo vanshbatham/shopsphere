@@ -25,8 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -63,7 +65,7 @@ public class UserService {
         }
         return createUserWithRole(request, Role.ADMIN);
     }
-    
+
     public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
@@ -105,7 +107,7 @@ public class UserService {
 
         return new AuthResponse(
                 newAccessToken,
-                refreshToken, // Echoing back the same refresh token
+                refreshToken,
                 "Bearer",
                 900000L // 15 minutes
         );
@@ -175,6 +177,32 @@ public class UserService {
         User user = userRepository.findById(UUID.fromString(userId))
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         return mapToUserResponse(user);
+    }
+
+    /**
+     * Bulk-resolves multiple user IDs to their basic info in a single query.
+     * Used by admin pages (e.g. AdminOrders) to avoid N+1 lookups when a
+     * list contains many distinct buyer IDs. Invalid UUID strings are
+     * silently skipped rather than failing the whole batch — one malformed
+     * ID shouldn't break the rest of the lookup.
+     */
+    @Transactional(readOnly = true)
+    public List<UserResponse> getUsersByIds(List<String> userIds) {
+        List<UUID> uuids = userIds.stream()
+                .map(id -> {
+                    try {
+                        return UUID.fromString(id);
+                    } catch (IllegalArgumentException e) {
+                        log.warn("Skipping invalid user id in bulk lookup: {}", id);
+                        return null;
+                    }
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        return userRepository.findAllById(uuids).stream()
+                .map(this::mapToUserResponse)
+                .collect(Collectors.toList());
     }
 
     @Transactional

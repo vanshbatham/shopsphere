@@ -14,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
@@ -92,6 +94,23 @@ public class UserController {
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getUserById(@RequestHeader("X-User-Id") String userId) {
         return ResponseEntity.ok(userService.getUserById(userId));
+    }
+
+    @Operation(summary = "Bulk lookup users by ID (Admin Only)", description = "Resolves multiple user IDs to their basic info (name, email) in one call. Used by admin pages like order management to avoid N+1 lookups. Requires ADMIN role header.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Users retrieved successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - User does not have the required role")
+    })
+    @GetMapping("/admin/lookup")
+    public ResponseEntity<List<UserResponse>> bulkLookupUsers(
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestParam List<String> userIds) {
+
+        if (!"ADMIN".equals(role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        return ResponseEntity.ok(userService.getUsersByIds(userIds));
     }
 
     @Operation(summary = "Initiate password reset", description = "Initiates the password reset process by sending a reset code to the user's email.")
