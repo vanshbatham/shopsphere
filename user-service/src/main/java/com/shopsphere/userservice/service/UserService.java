@@ -1,16 +1,15 @@
 package com.shopsphere.userservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shopsphere.userservice.dto.EmailVerificationRequestedEvent;
 import com.shopsphere.userservice.dto.request.*;
 import com.shopsphere.userservice.dto.response.AuthResponse;
 import com.shopsphere.userservice.dto.response.UserResponse;
-import com.shopsphere.userservice.entity.PasswordResetToken;
-import com.shopsphere.userservice.entity.Role;
-import com.shopsphere.userservice.entity.SellerProfile;
-import com.shopsphere.userservice.entity.User;
+import com.shopsphere.userservice.entity.*;
 import com.shopsphere.userservice.exception.BadRequestException;
 import com.shopsphere.userservice.exception.DuplicateResourceException;
 import com.shopsphere.userservice.exception.ResourceNotFoundException;
+import com.shopsphere.userservice.repository.EmailVerificationTokenRepository;
 import com.shopsphere.userservice.repository.PasswordResetTokenRepository;
 import com.shopsphere.userservice.repository.SellerRepository;
 import com.shopsphere.userservice.repository.UserRepository;
@@ -41,6 +40,7 @@ public class UserService {
     private final PasswordResetTokenRepository tokenRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final SellerRepository sellerRepository;
+    private final EmailVerificationTokenRepository emailVerificationTokenRepository;
 
     @Transactional
     public UserResponse registerUser(UserRegistrationRequest request) {
@@ -179,13 +179,6 @@ public class UserService {
         return mapToUserResponse(user);
     }
 
-    /**
-     * Bulk-resolves multiple user IDs to their basic info in a single query.
-     * Used by admin pages (e.g. AdminOrders) to avoid N+1 lookups when a
-     * list contains many distinct buyer IDs. Invalid UUID strings are
-     * silently skipped rather than failing the whole batch — one malformed
-     * ID shouldn't break the rest of the lookup.
-     */
     @Transactional(readOnly = true)
     public List<UserResponse> getUsersByIds(List<String> userIds) {
         List<UUID> uuids = userIds.stream()
@@ -203,6 +196,66 @@ public class UserService {
         return userRepository.findAllById(uuids).stream()
                 .map(this::mapToUserResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void initiateEmailVerification(String userId) {
+        User user = userRepository.findById(UUID.fromString(userId))
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (user.isEmailVerified()) {
+            throw new BadRequestException("Email is already verified");
+        }
+
+        emailVerificationTokenRepository.deleteByUser(user);
+        emailVerificationTokenRepository.flush();
+
+        SecureRandom random = new SecureRandom();
+        String otp = String.format("%06d", random.nextInt(999999));
+
+        EmailVerificationToken verificationToken = EmailVerificationToken.builder()
+                .token(otp)
+                .user(user)
+                .expiryDate(LocalDateTime.now().plusMinutes(15))
+                .build();
+        emailVerificationTokenRepository.save(verificationToken);
+
+        try {
+            EmailVerificationRequestedEvent event =
+                    new EmailVerificationRequestedEvent(user.getEmail(), user.getFirstName(), otp);
+            ObjectMapper objectMapper = new ObjectMapper();
+            String jsonMessage = objectMapper.writeValueAsString(event);
+
+            kafkaTemplate.send("email-verification-topic", jsonMessage);
+            log.info("Email verification OTP generated and sent to Kafka for user: {}", user.getEmail());
+        } catch (Exception e) {
+            log.error("Failed to publish email verification event to Kafka", e);
+            throw new RuntimeException("Could not send verification email");
+        }
+    }
+
+    @Transactional
+    public void confirmEmailVerification(String userId, String otp) {
+        User user = userRepository.findById(UUID.fromString(userId))
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        EmailVerificationToken verificationToken = emailVerificationTokenRepository.findByToken(otp)
+                .orElseThrow(() -> new AccessDeniedException("Invalid or expired verification code"));
+
+        if (!verificationToken.getUser().getId().equals(user.getId())) {
+            throw new AccessDeniedException("Invalid or expired verification code");
+        }
+
+        if (verificationToken.getExpiryDate().isBefore(LocalDateTime.now())) {
+            emailVerificationTokenRepository.delete(verificationToken);
+            throw new AccessDeniedException("Verification code has expired. Please request a new one.");
+        }
+
+        user.setEmailVerified(true);
+        userRepository.save(user);
+
+        emailVerificationTokenRepository.delete(verificationToken);
+        log.info("Email successfully verified for user: {}", user.getEmail());
     }
 
     @Transactional

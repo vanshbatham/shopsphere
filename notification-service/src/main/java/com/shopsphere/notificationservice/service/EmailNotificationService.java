@@ -1,10 +1,7 @@
 package com.shopsphere.notificationservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.shopsphere.notificationservice.dto.OrderItemSnapshot;
-import com.shopsphere.notificationservice.dto.OrderStatusNotificationEvent;
-import com.shopsphere.notificationservice.dto.PasswordResetRequestedEvent;
-import com.shopsphere.notificationservice.dto.ShippingAddressSnapshot;
+import com.shopsphere.notificationservice.dto.*;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +24,7 @@ public class EmailNotificationService {
 
     private final JavaMailSender mailSender;
     private final ObjectMapper objectMapper;
-
+    
     @Value("${spring.mail.username}")
     private String fromAddress;
 
@@ -45,6 +42,18 @@ public class EmailNotificationService {
             sendResetEmail(event.email(), event.firstName(), event.otpToken());
         } catch (Exception e) {
             log.error("Failed to process password reset event", e);
+        }
+    }
+
+    @KafkaListener(topics = "email-verification-topic", groupId = "notification-group")
+    public void handleEmailVerificationRequest(String message) {
+        try {
+            EmailVerificationRequestedEvent event =
+                    objectMapper.readValue(message, EmailVerificationRequestedEvent.class);
+            log.info("Received email verification event for: {}", event.email());
+            sendVerificationEmail(event.email(), event.firstName(), event.otpToken());
+        } catch (Exception e) {
+            log.error("Failed to process email verification event", e);
         }
     }
 
@@ -82,6 +91,62 @@ public class EmailNotificationService {
         log.info("Password reset email successfully sent to: {}", toEmail);
     }
 
+    private void sendVerificationEmail(String toEmail, String firstName, String otp) throws MessagingException {
+        MimeMessage mimeMessage = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "utf-8");
+
+        helper.setText(buildVerificationEmailHtml(firstName, otp), true);
+        helper.setTo(toEmail);
+        helper.setSubject("ShopSphere - Verify Your Email Address");
+        helper.setFrom(fromAddress);
+
+        mailSender.send(mimeMessage);
+        log.info("Email verification code successfully sent to: {}", toEmail);
+    }
+
+    private String buildVerificationEmailHtml(String firstName, String otp) {
+        String name = firstName != null ? firstName : "there";
+
+        StringBuilder html = new StringBuilder();
+        html.append("<div style=\"background:").append(BG_PAGE).append(";padding:32px 16px;font-family:Arial,Helvetica,sans-serif;\">");
+        html.append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;\">");
+
+        // Header banner
+        html.append("<tr><td style=\"background:").append(BRAND_DARK).append(";padding:28px 32px;\">");
+        html.append("<span style=\"font-size:20px;font-weight:bold;color:#ffffff;letter-spacing:-0.02em;\">ShopSphere</span>");
+        html.append("</td></tr>");
+
+        // Body
+        html.append("<tr><td style=\"padding:32px 32px 8px 32px;\">");
+        html.append("<h2 style=\"margin:0 0 4px 0;font-size:18px;color:").append(TEXT_DARK).append(";\">Hello ").append(escape(name)).append(",</h2>");
+        html.append("<p style=\"margin:0;font-size:14px;color:").append(TEXT_MUTED).append(";line-height:1.5;\">Use the code below to verify your email address on ShopSphere.</p>");
+        html.append("</td></tr>");
+
+        // OTP block
+        html.append("<tr><td style=\"padding:24px 32px 0 32px;\">");
+        html.append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f9fafb;border-radius:8px;\"><tr><td align=\"center\" style=\"padding:24px;\">");
+        html.append("<span style=\"font-size:32px;font-weight:bold;letter-spacing:0.15em;color:").append(BRAND_DARK).append(";\">").append(escape(otp)).append("</span>");
+        html.append("</td></tr></table>");
+        html.append("</td></tr>");
+
+        // Expiry note
+        html.append("<tr><td style=\"padding:16px 32px 0 32px;\">");
+        html.append("<p style=\"margin:0;font-size:13px;color:").append(TEXT_MUTED).append(";\">This code will expire in 15 minutes. If you didn't request this, you can safely ignore this email.</p>");
+        html.append("</td></tr>");
+
+        // Footer
+        html.append("<tr><td style=\"padding:32px 32px 28px 32px;\">");
+        html.append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"border-top:1px solid ")
+                .append(BORDER_LIGHT).append(";padding-top:20px;\">");
+        html.append("<p style=\"margin:0;font-size:13px;color:").append(TEXT_MUTED).append(";\">Thanks for using ShopSphere.</p>");
+        html.append("</td></tr></table>");
+        html.append("</td></tr>");
+
+        html.append("</table>");
+        html.append("</div>");
+        return html.toString();
+    }
+
     private void sendOrderStatusEmail(OrderStatusNotificationEvent event) throws MessagingException {
         MimeMessage mimeMessage = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "utf-8");
@@ -110,10 +175,10 @@ public class EmailNotificationService {
 
     private String statusColor(String status) {
         return switch (status) {
-            case "PLACED" -> "#2563eb";
-            case "SHIPPED" -> "#171717";
-            case "DELIVERED" -> "#059669";
-            case "CANCELLED" -> "#dc2626";
+            case "PLACED" -> "#2563eb";     // blue
+            case "SHIPPED" -> "#171717";    // near-black, matches app's "Shipped" badge
+            case "DELIVERED" -> "#059669";  // emerald
+            case "CANCELLED" -> "#dc2626";  // red
             default -> "#6b7280";
         };
     }
@@ -142,6 +207,12 @@ public class EmailNotificationService {
         if (orderNumber == null) return "";
         return orderNumber.length() >= 8 ? orderNumber.substring(0, 8).toUpperCase() : orderNumber.toUpperCase();
     }
+
+    // ─── HTML template ──────────────────────────────────────────────────────
+    // Built with nested tables + inline styles only — email clients (Gmail,
+    // Outlook especially) strip <style> blocks and ignore most modern CSS,
+    // so table layout + inline styles is still the only reliably-renders-
+    // everywhere approach.
 
     private String buildOrderEmailHtml(OrderStatusNotificationEvent event) {
         String name = event.firstName() != null ? event.firstName() : "there";

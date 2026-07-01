@@ -113,6 +113,29 @@ public class UserController {
         return ResponseEntity.ok(userService.getUsersByIds(userIds));
     }
 
+    @Operation(summary = "Request email verification code", description = "Sends a 6-digit verification code to the authenticated user's own email address.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Verification code sent successfully"),
+            @ApiResponse(responseCode = "400", description = "Email is already verified")
+    })
+    @PostMapping("/verify-email/request")
+    public ResponseEntity<String> requestEmailVerification(@RequestHeader("X-User-Id") String userId) {
+        userService.initiateEmailVerification(userId);
+        return ResponseEntity.ok("Verification code sent to your email.");
+    }
+
+    @Operation(summary = "Confirm email verification code", description = "Verifies the authenticated user's email using the 6-digit code sent to them.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Email verified successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid or expired verification code")
+    })
+    @PostMapping("/verify-email/confirm")
+    public ResponseEntity<String> confirmEmailVerification(@RequestHeader("X-User-Id") String userId,
+                                                           @Valid @RequestBody EmailVerificationConfirmRequest request) {
+        userService.confirmEmailVerification(userId, request.otp());
+        return ResponseEntity.ok("Email verified successfully.");
+    }
+
     @Operation(summary = "Initiate password reset", description = "Initiates the password reset process by sending a reset code to the user's email.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Password reset initiated successfully"),
