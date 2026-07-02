@@ -5,7 +5,11 @@ import com.shopsphere.userservice.dto.EmailVerificationRequestedEvent;
 import com.shopsphere.userservice.dto.request.*;
 import com.shopsphere.userservice.dto.response.AuthResponse;
 import com.shopsphere.userservice.dto.response.UserResponse;
-import com.shopsphere.userservice.entity.*;
+import com.shopsphere.userservice.entity.EmailVerificationToken;
+import com.shopsphere.userservice.entity.PasswordResetToken;
+import com.shopsphere.userservice.entity.Role;
+import com.shopsphere.userservice.entity.SellerProfile;
+import com.shopsphere.userservice.entity.User;
 import com.shopsphere.userservice.exception.BadRequestException;
 import com.shopsphere.userservice.exception.DuplicateResourceException;
 import com.shopsphere.userservice.exception.ResourceNotFoundException;
@@ -240,15 +244,15 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         EmailVerificationToken verificationToken = emailVerificationTokenRepository.findByToken(otp)
-                .orElseThrow(() -> new AccessDeniedException("Invalid or expired verification code"));
+                .orElseThrow(() -> new BadRequestException("Invalid or expired verification code"));
 
         if (!verificationToken.getUser().getId().equals(user.getId())) {
-            throw new AccessDeniedException("Invalid or expired verification code");
+            throw new BadRequestException("Invalid or expired verification code");
         }
 
         if (verificationToken.getExpiryDate().isBefore(LocalDateTime.now())) {
             emailVerificationTokenRepository.delete(verificationToken);
-            throw new AccessDeniedException("Verification code has expired. Please request a new one.");
+            throw new BadRequestException("Verification code has expired. Please request a new one.");
         }
 
         user.setEmailVerified(true);
