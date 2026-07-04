@@ -133,9 +133,29 @@ services:
 
 volumes:
   postgres-user-data:
+    external: true
+    name: shopsphere_postgres-user-data
+
   postgres-product-data:
+    external: true
+    name: shopsphere_postgres-product-data
+
   postgres-inventory-data:
+    external: true
+    name: shopsphere_postgres-inventory-data
+
   postgres-order-data:
+    external: true
+    name: shopsphere_postgres-order-data
+
   postgres-payment-data:
+    external: true
+    name: shopsphere_postgres-payment-data
+
   postgres-review-data:
+    external: true
+    name: shopsphere_postgres-review-data
+
   postgres-coupon-data:
+    external: true
+    name: shopsphere_postgres-coupon-data

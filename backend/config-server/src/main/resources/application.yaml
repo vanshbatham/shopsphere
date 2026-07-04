@@ -8,7 +8,7 @@ spring:
     config:
       server:
         git:
-          uri: file://D:\Vansh\Projects\shopsphere\shopsphere-config-repo
+          uri: file://D:\Vansh\Projects\shopsphere\backend\shopsphere-config-repo
           default-label: main
           clone-on-start: true
 
