@@ -12,7 +12,6 @@
         <option value="$PROJECT_DIR$/order-service/pom.xml" />
         <option value="$PROJECT_DIR$/review-service/pom.xml" />
         <option value="$PROJECT_DIR$/coupon-service/pom.xml" />
-        <option value="$PROJECT_DIR$/backend/pom.xml" />
       </list>
     </option>
   </component>
