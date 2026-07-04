@@ -503,7 +503,7 @@
       <workItem from="1783094282018" duration="731000" />
       <workItem from="1783095856444" duration="2865000" />
       <workItem from="1783100429119" duration="291000" />
-      <workItem from="1783139865335" duration="1658000" />
+      <workItem from="1783139865335" duration="1958000" />
     </task>
     <task id="LOCAL-00001" summary="refactor: change id from Long type to UUID">
       <option name="closed" value="true" />
